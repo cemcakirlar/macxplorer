@@ -93,8 +93,8 @@ struct FileListView: View {
     }
 
     private func open(_ entry: FileEntry) {
-        if entry.opensAsFolder {
-            Task { await model.navigate(to: entry.url) }
+        if let folder = FolderOpenTarget.url(for: entry.url, opensAsFolder: entry.opensAsFolder) {
+            Task { await model.navigate(to: folder) }
         } else {
             NSWorkspace.shared.open(entry.url)
         }
