@@ -3,12 +3,13 @@ import SwiftUI
 
 struct SidebarTreeView: View {
     var model: BrowserModel
+    var actions: ItemActions
 
     var body: some View {
         ScrollViewReader { proxy in
             List(selection: selection) {
                 ForEach(model.roots) { node in
-                    SidebarBranch(model: model, node: node)
+                    SidebarBranch(model: model, node: node, actions: actions)
                 }
             }
             .listStyle(.sidebar)
@@ -36,6 +37,7 @@ struct SidebarTreeView: View {
 private struct SidebarBranch: View {
     var model: BrowserModel
     var node: FolderNode
+    var actions: ItemActions
 
     var body: some View {
         expandedBranch
@@ -56,6 +58,13 @@ private struct SidebarBranch: View {
         }
         .tag(node.url)
         .id(node.url)
+        .contextMenu {
+            ItemContextMenu(
+                urls: [node.url],
+                opensAsFolder: { _ in true },
+                actions: actions
+            )
+        }
         .task(id: model.treeRevision) {
             await model.probeChildFolders(of: node)
         }
@@ -102,7 +111,7 @@ private struct SidebarBranch: View {
                 .lineLimit(3)
         case .loaded:
             ForEach(node.children) { child in
-                SidebarBranch(model: model, node: child)
+                SidebarBranch(model: model, node: child, actions: actions)
             }
         }
     }

@@ -15,9 +15,26 @@ struct MacxplorerApp: App {
         }
         .defaultSize(width: 1100, height: 700)
         .windowToolbarStyle(.unified)
+        .commands {
+            CommandGroup(after: .pasteboard) {
+                CopyPathCommand()
+            }
+        }
 
         Settings {
             SettingsView(settings: .shared)
         }
+    }
+}
+
+private struct CopyPathCommand: View {
+    @FocusedValue(\.copyPathAction) private var copyPathAction
+
+    var body: some View {
+        Button("Copy Path") {
+            copyPathAction?.perform()
+        }
+        .keyboardShortcut("c", modifiers: [.command, .option])
+        .disabled(copyPathAction?.isEnabled != true)
     }
 }

@@ -4,6 +4,7 @@ import SwiftUI
 struct FileListView: View {
     var model: BrowserModel
     @Binding var rowSelection: Set<URL>
+    var actions: ItemActions
     @State private var sortOrder = [KeyPathComparator(\FileEntry.name)]
 
     var body: some View {
@@ -66,6 +67,15 @@ struct FileListView: View {
             }
             .width(min: 100, ideal: 140)
         }
+        .contextMenu(forSelectionType: URL.self) { selection in
+            ItemContextMenu(
+                urls: Array(selection),
+                opensAsFolder: { url in
+                    model.entries.first { $0.url == url }?.opensAsFolder == true
+                },
+                actions: listActions
+            )
+        }
     }
 
     private func nameCell(_ entry: FileEntry) -> some View {
@@ -90,6 +100,17 @@ struct FileListView: View {
     ) -> some View {
         content()
             .frame(maxWidth: .infinity, alignment: alignment)
+    }
+
+    private var listActions: ItemActions {
+        ItemActions(
+            revealInFinder: actions.revealInFinder,
+            openInTerminal: actions.openInTerminal,
+            quickLook: { url in
+                rowSelection = [url]
+                actions.quickLook(url)
+            }
+        )
     }
 
     private func open(_ entry: FileEntry) {

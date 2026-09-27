@@ -5,23 +5,31 @@ import SwiftUI
 struct PreviewInspector: View {
     var entries: [FileEntry]
     var selection: Set<URL>
+    var focusedURL: URL?
     var autoplay: Bool
+
+    private var shownSelection: Set<URL> {
+        if let focusedURL {
+            return [focusedURL]
+        }
+        return selection
+    }
 
     var body: some View {
         Group {
-            if selection.isEmpty {
+            if shownSelection.isEmpty {
                 ContentUnavailableView(
                     "Select a File",
                     systemImage: "doc",
                     description: Text("Choose an item in the list.")
                 )
-            } else if selection.count > 1 {
+            } else if shownSelection.count > 1 {
                 ContentUnavailableView(
-                    "\(selection.count) Items Selected",
+                    "\(shownSelection.count) Items Selected",
                     systemImage: "square.stack",
                     description: Text("Select one item to preview it.")
                 )
-            } else if let url = selection.first {
+            } else if let url = shownSelection.first {
                 selectedPreview(url)
             }
         }

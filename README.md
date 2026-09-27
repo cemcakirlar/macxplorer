@@ -33,6 +33,7 @@ Sandbox is already off (`ENABLE_APP_SANDBOX = NO` and `Macxplorer/Macxplorer.ent
 4. Double-click a file. It opens in the default app.
 5. Use the path bar to jump upward. **Back** (Command-[), **Forward** (Command-]), and **Up** (Command-Up Arrow) sit at the leading edge of the toolbar.
 6. **Hidden** (Command-Shift-.), **Refresh** (Command-R), **Preview** (Command-Shift-P), **Finder**, and **Terminal** are in the toolbar. Preview uses Quick Look and shows kind, size, and modified date for the selected item.
+7. Right-click a file or folder: **Reveal in Finder**, **Open in Terminal**, **Copy Name**, **Copy Path**, **Copy Path with ~**, and **Quick Look**. **Copy Path** is also Option-Command-C. If nothing in the list is selected, the shortcut copies the open folder. A file’s terminal is its parent folder. **Quick Look** opens the preview for that one item.
 
 Directory size stays “—”. Folder sizes are not calculated.
 

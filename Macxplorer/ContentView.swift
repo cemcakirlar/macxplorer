@@ -5,20 +5,22 @@ struct ContentView: View {
     @Bindable var settings: AppSettings
     @State private var model = BrowserModel()
     @State private var listSelection = Set<URL>()
+    @State private var quickLookURL: URL?
     @State private var actionError: String?
 
     var body: some View {
         NavigationSplitView {
-            SidebarTreeView(model: model)
+            SidebarTreeView(model: model, actions: itemActions)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 480)
         } detail: {
-            FileListView(model: model, rowSelection: $listSelection)
+            FileListView(model: model, rowSelection: $listSelection, actions: itemActions)
                 .navigationTitle(detailTitle)
         }
         .inspector(isPresented: $settings.showPreview) {
             PreviewInspector(
                 entries: model.entries,
                 selection: listSelection,
+                focusedURL: quickLookURL,
                 autoplay: settings.previewAutoplay
             )
             .inspectorColumnWidth(min: 220, ideal: 280, max: 900)
@@ -28,11 +30,19 @@ struct ContentView: View {
             pathToolbar
             actionToolbar
         }
+        .focusedSceneValue(\.copyPathAction, copyPathAction)
         .task {
             await model.bootstrap()
         }
         .onChange(of: model.selectedURL) { _, _ in
             listSelection = []
+            quickLookURL = nil
+        }
+        .onChange(of: listSelection) { _, newValue in
+            guard let quickLookURL else { return }
+            if newValue != Set([quickLookURL]) {
+                self.quickLookURL = nil
+            }
         }
         .onChange(of: settings.showHidden) { _, show in
             Task { await model.setShowHiddenInList(show) }
@@ -142,7 +152,7 @@ struct ContentView: View {
             .help("Open the current folder in Finder")
 
             Button {
-                openInTerminal()
+                openCurrentFolderInTerminal()
             } label: {
                 Label("Terminal", systemImage: "terminal")
             }
@@ -155,9 +165,45 @@ struct ContentView: View {
         "\(settings.sidebarRootHome)\n\(settings.sidebarRootRoot)\n\(settings.sidebarRootVolumes)"
     }
 
+    private var copyPathAction: CopyPathAction {
+        let urls = copyPathURLs
+        return CopyPathAction(isEnabled: !urls.isEmpty) {
+            PathClipboard.copy(urls: urls)
+        }
+    }
+
+    private var copyPathURLs: [URL] {
+        if !listSelection.isEmpty {
+            return Array(listSelection)
+        }
+        if let selectedURL = model.selectedURL {
+            return [selectedURL]
+        }
+        return []
+    }
+
     private var detailTitle: String {
         guard let selectedURL = model.selectedURL else { return "MacXplorer" }
         return FileManager.default.displayName(atPath: selectedURL.path)
+    }
+
+    private var itemActions: ItemActions {
+        ItemActions(
+            revealInFinder: revealInFinder,
+            openInTerminal: openInTerminal(directories:),
+            quickLook: quickLook
+        )
+    }
+
+    private func quickLook(_ url: URL) {
+        quickLookURL = url
+        settings.showPreview = true
+    }
+
+    private func revealInFinder(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        NSWorkspace.shared.activateFileViewerSelecting(urls)
+        appLogger.info("Revealed \(urls.count, privacy: .public) item(s) in Finder")
     }
 
     private func openInFinder() {
@@ -180,12 +226,17 @@ struct ContentView: View {
         )
     }
 
-    private func openInTerminal() {
+    private func openCurrentFolderInTerminal() {
         guard let url = model.selectedURL else { return }
+        openInTerminal(directories: [url])
+    }
+
+    private func openInTerminal(directories: [URL]) {
+        guard !directories.isEmpty else { return }
         let terminalURL = URL(fileURLWithPath: settings.terminalAppPath)
         let configuration = NSWorkspace.OpenConfiguration()
         NSWorkspace.shared.open(
-            [url],
+            directories,
             withApplicationAt: terminalURL,
             configuration: configuration
         ) { _, error in
@@ -196,7 +247,8 @@ struct ContentView: View {
                     actionError = message
                 }
             } else {
-                appLogger.info("Opened Terminal at \(url.path, privacy: .public)")
+                let path = directories.map(\.path).joined(separator: ", ")
+                appLogger.info("Opened Terminal at \(path, privacy: .public)")
             }
         }
     }
