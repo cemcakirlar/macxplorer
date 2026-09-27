@@ -11,6 +11,16 @@ Native macOS file manager: folder tree on the left, file list on the right. Subf
 
 Sandbox is already off (`ENABLE_APP_SANDBOX = NO` and `Macxplorer/Macxplorer.entitlements`). Full Disk Access is a system toggle, not an entitlement.
 
+## Commands
+
+`make help` lists every command.
+
+- `make run` builds Debug and opens the window.
+- `make run-fg` runs that build in the terminal.
+- `make logs` streams the running app’s system log. `Ctrl+C` stops it.
+- `make stop` quits the running app.
+- `make package` writes `dist/Macxplorer-v<version>-macOS.zip`.
+
 ## Try it
 
 1. Expand **Home** with the chevron. Only that folder’s subfolders load.
