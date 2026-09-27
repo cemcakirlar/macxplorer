@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var model = BrowserModel()
+    @State private var actionError: String?
 
     var body: some View {
         NavigationSplitView {
@@ -55,6 +56,16 @@ struct ContentView: View {
         .task {
             await model.bootstrap()
         }
+        .alert(
+            "Can't Open Terminal",
+            isPresented: actionErrorIsPresented,
+            actions: {
+                Button("OK", role: .cancel) {}
+            },
+            message: {
+                Text(actionError ?? "")
+            }
+        )
     }
 
     private var detailTitle: String {
@@ -76,18 +87,31 @@ struct ContentView: View {
         NSWorkspace.shared.open(url)
     }
 
+    private var actionErrorIsPresented: Binding<Bool> {
+        Binding(
+            get: { actionError != nil },
+            set: { isPresented in
+                if !isPresented {
+                    actionError = nil
+                }
+            }
+        )
+    }
+
     private func openInTerminal() {
         guard let url = model.selectedURL else { return }
-        let escapedPath = url.path
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-        let source = """
-        tell application "Terminal"
-            activate
-            do script "cd " & quoted form of "\(escapedPath)"
-        end tell
-        """
-        var errorInfo: NSDictionary?
-        NSAppleScript(source: source)?.executeAndReturnError(&errorInfo)
+        let terminalURL = URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app")
+        let configuration = NSWorkspace.OpenConfiguration()
+        NSWorkspace.shared.open(
+            [url],
+            withApplicationAt: terminalURL,
+            configuration: configuration
+        ) { _, error in
+            guard let error else { return }
+            let message = error.localizedDescription
+            Task { @MainActor in
+                actionError = message
+            }
+        }
     }
 }
