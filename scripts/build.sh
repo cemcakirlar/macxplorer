@@ -52,7 +52,7 @@ if [ "$DO_CLEAN" = true ]; then
     fi
 fi
 
-echo -e "${BLUE}${BOLD}🔨 Building Macxplorer... [Config: $CONFIG]${NC}"
+echo -e "${BLUE}${BOLD}🔨 Building MacXplorer... [Config: $CONFIG]${NC}"
 START_TIME=$(date +%s)
 
 xcodebuild \

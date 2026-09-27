@@ -68,17 +68,17 @@ if [ ! -d "$APP_PATH" ] || [ ! -f "$BINARY_PATH" ]; then
 fi
 
 if [ "$FOREGROUND" = true ]; then
-    echo -e "${BLUE}🚀 Launching Macxplorer in foreground (Press Ctrl+C to terminate)...${NC}"
+    echo -e "${BLUE}🚀 Launching MacXplorer in foreground (Press Ctrl+C to terminate)...${NC}"
     "$BINARY_PATH"
 else
-    echo -e "${BLUE}🚀 Launching Macxplorer...${NC}"
+    echo -e "${BLUE}🚀 Launching MacXplorer...${NC}"
     open "$APP_PATH"
 
     sleep 0.8
     NEW_PID=$(pgrep -x "Macxplorer" 2>/dev/null || true)
     if [ -n "$NEW_PID" ]; then
-        echo -e "${GREEN}✅ Macxplorer is up and running! (PID: $NEW_PID)${NC}"
+        echo -e "${GREEN}✅ MacXplorer is up and running! (PID: $NEW_PID)${NC}"
     else
-        echo -e "${YELLOW}⚠️  Application launched; check for the Macxplorer window.${NC}"
+        echo -e "${YELLOW}⚠️  Application launched; check for the MacXplorer window.${NC}"
     fi
 fi

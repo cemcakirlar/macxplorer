@@ -23,7 +23,7 @@ BUMP_TYPE="patch"
 
 print_help() {
     cat <<EOF
-Macxplorer - Release Cycle & Version Manager
+MacXplorer - Release Cycle & Version Manager
 
 Usage:
   ./scripts/release.sh [patch | minor | major | <version>] [OPTIONS]
@@ -83,7 +83,7 @@ for arg in "$@"; do
 done
 
 echo -e "${CYAN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${CYAN}${BOLD}🚀 MACXPLORER — RELEASE CYCLE ORCHESTRATOR${NC}"
+echo -e "${CYAN}${BOLD}🚀 MacXplorer — RELEASE CYCLE ORCHESTRATOR${NC}"
 echo -e "${CYAN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
 if [ "$DRY_RUN" = true ]; then
@@ -279,7 +279,7 @@ RELEASE_NOTES+="\`\`\`bash\nxattr -cr \"/Applications/Macxplorer.app\"\n\`\`\`\n
 RELEASE_NOTES+="*Alternatively, open **System Settings ➔ Privacy & Security** and click **Open Anyway**.* \n\n"
 
 if [ ${#FEATS[@]} -eq 0 ] && [ ${#FIXES[@]} -eq 0 ] && [ ${#PERFS[@]} -eq 0 ] && [ ${#CHORES[@]} -eq 0 ] && [ ${#OTHERS[@]} -eq 0 ]; then
-    RELEASE_NOTES+="### Changes\n- Release v${NEW_VERSION} of Macxplorer.\n\n"
+    RELEASE_NOTES+="### Changes\n- Release v${NEW_VERSION} of MacXplorer.\n\n"
 fi
 
 BUILD_DIR="$PROJECT_ROOT/.build"
@@ -290,7 +290,7 @@ printf "%b" "$RELEASE_NOTES" > "$RELEASE_NOTES_FILE"
 echo -e "   📄 Release Notes Prepared (${RELEASE_NOTES_FILE})"
 
 CHANGELOG_FILE="$PROJECT_ROOT/CHANGELOG.md"
-HEADER="# Changelog\n\nAll notable changes to Macxplorer will be documented in this file.\nThe format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).\n"
+HEADER="# Changelog\n\nAll notable changes to MacXplorer will be documented in this file.\nThe format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).\n"
 
 if [ "$DRY_RUN" = false ]; then
     if [ ! -f "$CHANGELOG_FILE" ]; then
@@ -382,14 +382,14 @@ if [ "$NO_PUSH" = false ] && [ "$DRY_RUN" = false ]; then
 
         if gh release view "$TAG_NAME" > /dev/null 2>&1; then
             echo -e "${YELLOW}ℹ️  Updating existing GitHub release...${NC}"
-            gh release edit "$TAG_NAME" --title "Macxplorer ${TAG_NAME}" --notes-file "$RELEASE_NOTES_FILE"
+            gh release edit "$TAG_NAME" --title "MacXplorer ${TAG_NAME}" --notes-file "$RELEASE_NOTES_FILE"
             if [ ${#ASSETS[@]} -gt 0 ]; then
                 gh release upload "$TAG_NAME" "${ASSETS[@]}" --clobber
             fi
         else
             gh release create "$TAG_NAME" \
                 "${ASSETS[@]}" \
-                --title "Macxplorer ${TAG_NAME}" \
+                --title "MacXplorer ${TAG_NAME}" \
                 --notes-file "$RELEASE_NOTES_FILE"
         fi
 
@@ -401,7 +401,7 @@ else
     echo -e "   To push manually:"
     echo -e "   git push origin $CURRENT_BRANCH && git push origin $TAG_NAME"
     if [ -f "$DIST_ZIP" ]; then
-        echo -e "   gh release create $TAG_NAME \"$DIST_ZIP\" \"$DIST_SHA\" --title \"Macxplorer $TAG_NAME\" --notes-file \"$RELEASE_NOTES_FILE\""
+        echo -e "   gh release create $TAG_NAME \"$DIST_ZIP\" \"$DIST_SHA\" --title \"MacXplorer $TAG_NAME\" --notes-file \"$RELEASE_NOTES_FILE\""
     fi
 fi
 

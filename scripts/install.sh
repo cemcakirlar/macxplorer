@@ -46,7 +46,7 @@ for arg in "$@"; do
     esac
 done
 
-echo -e "${BLUE}${BOLD}📦 Macxplorer Installation${NC}"
+echo -e "${BLUE}${BOLD}📦 MacXplorer Installation${NC}"
 echo -e "   Configuration : ${BOLD}$CONFIG${NC}"
 echo -e "   Target Path   : ${BOLD}$DEST_DIR${NC}"
 
@@ -98,7 +98,7 @@ fi
 
 echo -e "${GREEN}🎉 INSTALLATION COMPLETED SUCCESSFULLY!${NC}"
 echo -e "   Path: ${BOLD}$TARGET_APP${NC}"
-echo -e "   • Launch anytime via Spotlight (Cmd + Space): '${BOLD}Macxplorer${NC}'"
+echo -e "   • Launch anytime via Spotlight (Cmd + Space): '${BOLD}MacXplorer${NC}'"
 
 if [ "$AUTO_LAUNCH" = true ]; then
     echo -e "\n${BLUE}🚀 Launching application...${NC}"
@@ -106,6 +106,6 @@ if [ "$AUTO_LAUNCH" = true ]; then
     sleep 0.8
     NEW_PID=$(pgrep -x "Macxplorer" 2>/dev/null || true)
     if [ -n "$NEW_PID" ]; then
-        echo -e "${GREEN}✅ Macxplorer is running. (PID: $NEW_PID)${NC}"
+        echo -e "${GREEN}✅ MacXplorer is running. (PID: $NEW_PID)${NC}"
     fi
 fi

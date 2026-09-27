@@ -1,4 +1,4 @@
-# Macxplorer
+# MacXplorer
 
 Native macOS file manager: folder tree on the left, file list on the right. Subfolders load when you expand them. App Sandbox is off so the app can read your disk.
 
@@ -7,7 +7,7 @@ Native macOS file manager: folder tree on the left, file list on the right. Subf
 1. Open `Macxplorer.xcodeproj`.
 2. Scheme **Macxplorer**, then Run (Command-R).
 3. If macOS asks, allow Desktop, Documents, and Downloads.
-4. For protected folders such as `~/Library`, grant Full Disk Access: System Settings → Privacy & Security → Full Disk Access, then enable Macxplorer.
+4. For protected folders such as `~/Library`, grant Full Disk Access: System Settings → Privacy & Security → Full Disk Access, then enable MacXplorer.
 
 Sandbox is already off (`ENABLE_APP_SANDBOX = NO` and `Macxplorer/Macxplorer.entitlements`). Full Disk Access is a system toggle, not an entitlement.
 

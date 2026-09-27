@@ -62,7 +62,7 @@ clean:
 
 # Help menu
 help:
-	@echo "Macxplorer - Developer and Release Commands:"
+	@echo "MacXplorer - Developer and Release Commands:"
 	@echo "  make (or make help)  : Show this help menu (Default)"
 	@echo "  make run             : Build Debug and launch in background"
 	@echo "  make run-fg          : Run in foreground with live console logs"

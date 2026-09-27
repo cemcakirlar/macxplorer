@@ -12,8 +12,10 @@
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<key>CFBundleDisplayName</key>
+	<string>MacXplorer</string>
 	<key>CFBundleName</key>
-	<string>$(PRODUCT_NAME)</string>
+	<string>MacXplorer</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -23,15 +25,15 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>NSDesktopFolderUsageDescription</key>
-	<string>Macxplorer shows the folders and files on your Desktop.</string>
+	<string>MacXplorer shows the folders and files on your Desktop.</string>
 	<key>NSDocumentsFolderUsageDescription</key>
-	<string>Macxplorer shows the folders and files in Documents.</string>
+	<string>MacXplorer shows the folders and files in Documents.</string>
 	<key>NSDownloadsFolderUsageDescription</key>
-	<string>Macxplorer shows the folders and files in Downloads.</string>
+	<string>MacXplorer shows the folders and files in Downloads.</string>
 	<key>NSRemovableVolumesUsageDescription</key>
-	<string>Macxplorer shows folders and files on removable volumes.</string>
+	<string>MacXplorer shows folders and files on removable volumes.</string>
 	<key>NSNetworkVolumesUsageDescription</key>
-	<string>Macxplorer shows folders and files on network volumes.</string>
+	<string>MacXplorer shows folders and files on network volumes.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 </dict>

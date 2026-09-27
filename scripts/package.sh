@@ -46,7 +46,7 @@ fi
 
 BUILD_NUM=$(grep -m1 "CURRENT_PROJECT_VERSION" Macxplorer.xcodeproj/project.pbxproj | sed -E 's/.*= ([^;]+);/\1/' | tr -d ' "')
 
-echo -e "${BLUE}${BOLD}📦 Packaging Macxplorer...${NC}"
+echo -e "${BLUE}${BOLD}📦 Packaging MacXplorer...${NC}"
 echo -e "   Version : ${BOLD}v${TARGET_VERSION} (Build ${BUILD_NUM})${NC}"
 
 # 1. Run Release build
