@@ -1,0 +1,142 @@
+import AppKit
+import SwiftUI
+
+struct FileListView: View {
+    var model: BrowserModel
+    @State private var rowSelection = Set<URL>()
+
+    var body: some View {
+        Group {
+            if model.isLoadingDetail, model.entries.isEmpty, model.detailError == nil {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let detailError = model.detailError, model.entries.isEmpty {
+                ContentUnavailableView(
+                    "Can't Open Folder",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(detailError)
+                )
+            } else if model.entries.isEmpty {
+                ContentUnavailableView(
+                    "Empty Folder",
+                    systemImage: "folder",
+                    description: Text("This folder is empty.")
+                )
+            } else {
+                table
+            }
+        }
+    }
+
+    private var table: some View {
+        Table(model.entries, selection: $rowSelection) {
+            TableColumn("Name") { entry in
+                cell(entry) {
+                    HStack(spacing: 6) {
+                        Image(nsImage: IconStore.shared.icon(for: entry.url))
+                            .resizable()
+                            .frame(width: 16, height: 16)
+                        Text(entry.name)
+                            .lineLimit(1)
+                    }
+                }
+            }
+            .width(min: 180, ideal: 280)
+
+            TableColumn("Date Modified") { entry in
+                cell(entry) {
+                    Text(FileMetadataFormat.dateText(entry.modified))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .width(min: 140, ideal: 170)
+
+            TableColumn("Size") { entry in
+                cell(entry, alignment: .trailing) {
+                    Text(FileMetadataFormat.sizeText(bytes: entry.size))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .width(min: 70, ideal: 90)
+
+            TableColumn("Kind") { entry in
+                cell(entry) {
+                    Text(entry.kind)
+                        .lineLimit(1)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .width(min: 100, ideal: 140)
+        }
+    }
+
+    private func cell<Content: View>(
+        _ entry: FileEntry,
+        alignment: Alignment = .leading,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .frame(maxWidth: .infinity, alignment: alignment)
+            .overlay {
+                RowDoubleClickCatcher {
+                    open(entry)
+                }
+            }
+    }
+
+    private func open(_ entry: FileEntry) {
+        if entry.opensAsFolder {
+            Task { await model.navigate(to: entry.url) }
+        } else {
+            NSWorkspace.shared.open(entry.url)
+        }
+    }
+}
+
+@MainActor
+private enum FileMetadataFormat {
+    static func dateText(_ date: Date?) -> String {
+        guard let date else { return "—" }
+        return date.formatted(date: .abbreviated, time: .shortened)
+    }
+
+    static func sizeText(bytes: Int64?) -> String {
+        guard let bytes else { return "—" }
+        return byteCount.string(fromByteCount: bytes)
+    }
+
+    private static let byteCount: ByteCountFormatter = {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter
+    }()
+}
+
+private struct RowDoubleClickCatcher: NSViewRepresentable {
+    var onDoubleClick: @MainActor () -> Void
+
+    func makeNSView(context: Context) -> RowDoubleClickView {
+        let view = RowDoubleClickView()
+        view.onDoubleClick = onDoubleClick
+        return view
+    }
+
+    func updateNSView(_ nsView: RowDoubleClickView, context: Context) {
+        nsView.onDoubleClick = onDoubleClick
+    }
+}
+
+private final class RowDoubleClickView: NSView {
+    var onDoubleClick: (@MainActor () -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 2 {
+            let action = onDoubleClick
+            Task { @MainActor in
+                action?()
+            }
+        }
+        nextResponder?.mouseDown(with: event)
+    }
+}
