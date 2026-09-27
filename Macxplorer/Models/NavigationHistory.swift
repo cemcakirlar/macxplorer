@@ -1,0 +1,39 @@
+import Foundation
+
+struct NavigationHistory: Equatable {
+    private(set) var backStack: [URL] = []
+    private(set) var forwardStack: [URL] = []
+
+    var canGoBack: Bool { !backStack.isEmpty }
+    var canGoForward: Bool { !forwardStack.isEmpty }
+
+    mutating func recordVisit(from current: URL?, to next: URL) {
+        guard let current else { return }
+        let origin = current.directoryKey
+        let destination = next.directoryKey
+        guard origin.path != destination.path else { return }
+        backStack.append(origin)
+        forwardStack.removeAll()
+    }
+
+    mutating func goBack(from current: URL?) -> URL? {
+        guard let current, let previous = backStack.popLast() else { return nil }
+        forwardStack.append(current.directoryKey)
+        return previous
+    }
+
+    mutating func goForward(from current: URL?) -> URL? {
+        guard let current, let next = forwardStack.popLast() else { return nil }
+        backStack.append(current.directoryKey)
+        return next
+    }
+}
+
+enum FolderNavigation {
+    static func parent(of url: URL) -> URL? {
+        let current = url.directoryKey
+        let parent = current.deletingLastPathComponent().directoryKey
+        guard parent.path != current.path else { return nil }
+        return parent
+    }
+}

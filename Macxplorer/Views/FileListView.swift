@@ -4,6 +4,7 @@ import SwiftUI
 struct FileListView: View {
     var model: BrowserModel
     @State private var rowSelection = Set<URL>()
+    @State private var sortOrder = [KeyPathComparator(\FileEntry.name)]
 
     var body: some View {
         Group {
@@ -28,14 +29,18 @@ struct FileListView: View {
         }
     }
 
+    private var rows: [FileEntry] {
+        FileListOrder.sorted(model.entries, by: FileSort(order: sortOrder))
+    }
+
     private var table: some View {
-        Table(model.entries, selection: $rowSelection) {
-            TableColumn("Name") { entry in
+        Table(rows, selection: $rowSelection, sortOrder: $sortOrder) {
+            TableColumn("Name", value: \.name) { entry in
                 nameCell(entry)
             }
             .width(min: 180, ideal: 280)
 
-            TableColumn("Date Modified") { entry in
+            TableColumn("Date Modified", value: \.modifiedColumn) { entry in
                 plainCell {
                     Text(FileMetadataFormat.dateText(entry.modified))
                         .foregroundStyle(.secondary)
@@ -43,7 +48,7 @@ struct FileListView: View {
             }
             .width(min: 140, ideal: 170)
 
-            TableColumn("Size") { entry in
+            TableColumn("Size", value: \.sizeColumn) { entry in
                 plainCell(alignment: .trailing) {
                     Text(FileMetadataFormat.sizeText(bytes: entry.size))
                         .monospacedDigit()
@@ -52,7 +57,7 @@ struct FileListView: View {
             }
             .width(min: 70, ideal: 90)
 
-            TableColumn("Kind") { entry in
+            TableColumn("Kind", value: \.kind) { entry in
                 plainCell {
                     Text(entry.kind)
                         .lineLimit(1)

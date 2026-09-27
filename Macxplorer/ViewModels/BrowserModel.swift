@@ -11,24 +11,38 @@ final class BrowserModel {
     var entries: [FileEntry] = []
     var detailError: String?
     var isLoadingDetail = false
-    var showHidden = false
+    var showHiddenInList = false
+    var showHiddenInSidebar = false
+    var treeRevision = 0
 
+    private var history = NavigationHistory()
+    private var pinnedPaths: Set<String> = []
     private var listingGeneration = 0
+    private var probeTickets: [String: Int] = [:]
     private var detailTicket = 0
     private var childTickets: [String: Int] = [:]
     private var detailTask: Task<Void, Never>?
     private var detailIconTask: Task<Void, Never>?
     private var treeIconTask: Task<Void, Never>?
+    private var pathIconTask: Task<Void, Never>?
     private let settings: AppSettings
+
+    var canGoBack: Bool { history.canGoBack }
+    var canGoForward: Bool { history.canGoForward }
+    var canGoUp: Bool {
+        guard let selectedURL else { return false }
+        return FolderNavigation.parent(of: selectedURL) != nil
+    }
 
     init(settings: AppSettings = .shared) {
         self.settings = settings
-        showHidden = settings.showHidden
+        showHiddenInList = settings.showHidden
+        showHiddenInSidebar = settings.showHiddenInSidebar
         let home = FileManager.default.homeDirectoryForCurrentUser
         roots = [
-            FolderNode(url: home, name: "Home"),
-            FolderNode(url: URL(fileURLWithPath: "/", isDirectory: true), name: "Root"),
-            FolderNode(url: URL(fileURLWithPath: "/Volumes", isDirectory: true), name: "Volumes"),
+            FolderNode(url: home, name: SidebarRootLabel.home),
+            FolderNode(url: URL(fileURLWithPath: "/", isDirectory: true), name: SidebarRootLabel.root),
+            FolderNode(url: URL(fileURLWithPath: "/Volumes", isDirectory: true), name: SidebarRootLabel.volumes),
         ]
         selectedURL = LaunchFolder.url(
             reopenLastFolder: settings.reopenLastFolder,
@@ -36,12 +50,29 @@ final class BrowserModel {
             home: home,
             directoryExists: Self.directoryExists
         )
+        applyRootLabels()
+    }
+
+    func applyRootLabels() {
+        let stored = [
+            settings.sidebarRootHome,
+            settings.sidebarRootRoot,
+            settings.sidebarRootVolumes,
+        ]
+        let fallbacks = [
+            SidebarRootLabel.home,
+            SidebarRootLabel.root,
+            SidebarRootLabel.volumes,
+        ]
+        for index in roots.indices {
+            roots[index].name = SidebarRootLabel.resolved(stored[index], fallback: fallbacks[index])
+        }
     }
 
     func bootstrap() async {
         guard let selectedURL else { return }
         if settings.reopenLastFolder {
-            await navigate(to: selectedURL)
+            await navigate(to: selectedURL, recordsHistory: false)
         } else {
             beginDetailLoad(selectedURL)
         }
@@ -50,30 +81,76 @@ final class BrowserModel {
     func select(_ url: URL) {
         let next = url.directoryKey
         guard next.path != selectedURL?.path else { return }
+        recordVisit(to: next)
         selectedURL = next
         settings.rememberFolder(next)
         beginDetailLoad(next)
+        syncPinnedPath()
     }
 
-    func navigate(to url: URL) async {
+    func navigate(to url: URL, recordsHistory: Bool = true) async {
         let next = url.directoryKey
+        if recordsHistory {
+            recordVisit(to: next)
+        }
         appLogger.info("Opening \(next.path, privacy: .public)")
         selectedURL = next
         settings.rememberFolder(next)
         beginDetailLoad(next)
         await expandAncestors(of: next)
         selectedURL = next
+        syncPinnedPath()
         scrollToURL = next
     }
 
-    func setShowHidden(_ show: Bool) async {
-        guard show != showHidden else { return }
-        showHidden = show
-        await reloadListings()
+    func goBack() async {
+        var snapshot = history
+        guard let target = snapshot.goBack(from: selectedURL) else { return }
+        history = snapshot
+        await navigate(to: target, recordsHistory: false)
+    }
+
+    func goForward() async {
+        var snapshot = history
+        guard let target = snapshot.goForward(from: selectedURL) else { return }
+        history = snapshot
+        await navigate(to: target, recordsHistory: false)
+    }
+
+    func goUp() async {
+        guard let selectedURL, let parent = FolderNavigation.parent(of: selectedURL) else { return }
+        await navigate(to: parent)
+    }
+
+    func setShowHiddenInList(_ show: Bool) async {
+        guard show != showHiddenInList else { return }
+        showHiddenInList = show
+        if let selectedURL {
+            beginDetailLoad(selectedURL)
+        }
+    }
+
+    func setShowHiddenInSidebar(_ show: Bool) async {
+        guard show != showHiddenInSidebar else { return }
+        showHiddenInSidebar = show
+        await reloadTree()
     }
 
     func refresh() async {
         await reloadListings()
+    }
+
+    func probeChildFolders(of node: FolderNode) async {
+        guard node.loadState == .unloaded, node.hasChildFolders == nil else { return }
+        let path = node.url.path
+        let ticket = (probeTickets[path] ?? 0) + 1
+        probeTickets[path] = ticket
+        let generation = listingGeneration
+        let includeHidden = showHiddenInSidebar
+        let found = await FileSystemService.containsListableFolder(at: node.url, showHidden: includeHidden)
+        guard probeTickets[path] == ticket, generation == listingGeneration else { return }
+        guard node.loadState == .unloaded, let found else { return }
+        node.hasChildFolders = found
     }
 
     func loadChildren(of node: FolderNode) async {
@@ -81,7 +158,7 @@ final class BrowserModel {
         let ticket = (childTickets[path] ?? 0) + 1
         childTickets[path] = ticket
         let generation = listingGeneration
-        let includeHidden = showHidden
+        let includeHidden = showHiddenInSidebar
         node.loadState = .loading
 
         do {
@@ -91,6 +168,7 @@ final class BrowserModel {
                 FolderNode(url: entry.url, name: entry.name)
             }
             node.loadState = .loaded
+            syncPinnedPath()
             scheduleIconPrefetch(node.children.map(\.url), forTree: true)
         } catch is CancellationError {
             return
@@ -101,23 +179,29 @@ final class BrowserModel {
         }
     }
 
+    private func recordVisit(to next: URL) {
+        var snapshot = history
+        snapshot.recordVisit(from: selectedURL, to: next)
+        history = snapshot
+    }
+
     private func beginDetailLoad(_ url: URL) {
+        prefetchPathIcon(url)
         detailTicket += 1
         let ticket = detailTicket
-        let generation = listingGeneration
         entries = []
         detailError = nil
         isLoadingDetail = true
         detailIconTask?.cancel()
         detailTask?.cancel()
-        detailTask = Task { await self.loadDetail(at: url, ticket: ticket, generation: generation) }
+        detailTask = Task { await self.loadDetail(at: url, ticket: ticket) }
     }
 
-    private func loadDetail(at url: URL, ticket: Int, generation: Int) async {
-        let includeHidden = showHidden
+    private func loadDetail(at url: URL, ticket: Int) async {
+        let includeHidden = showHiddenInList
         do {
             let listed = try await FileSystemService.listDirectory(at: url, showHidden: includeHidden)
-            guard ticket == detailTicket, generation == listingGeneration else { return }
+            guard ticket == detailTicket else { return }
             guard selectedURL?.path == url.directoryKey.path else { return }
             entries = listed
             detailError = nil
@@ -126,13 +210,20 @@ final class BrowserModel {
         } catch is CancellationError {
             return
         } catch {
-            guard ticket == detailTicket, generation == listingGeneration else { return }
+            guard ticket == detailTicket else { return }
             entries = []
             detailError = error.localizedDescription
             appLogger.info("Failed to list \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }
         guard ticket == detailTicket else { return }
         isLoadingDetail = false
+    }
+
+    private func prefetchPathIcon(_ url: URL) {
+        pathIconTask?.cancel()
+        pathIconTask = Task {
+            await IconStore.shared.prefetch([url])
+        }
     }
 
     private func scheduleIconPrefetch(_ urls: [URL], forTree: Bool) {
@@ -149,18 +240,26 @@ final class BrowserModel {
     }
 
     private func reloadListings() async {
-        listingGeneration += 1
-        resetTree()
-        await reloadExpandedNodes()
+        await reloadTree()
         if let selectedURL {
             beginDetailLoad(selectedURL)
         }
+    }
+
+    private func reloadTree() async {
+        listingGeneration += 1
+        treeRevision += 1
+        resetTree()
+        pinnedPaths.removeAll()
+        await reloadExpandedNodes()
+        syncPinnedPath()
     }
 
     private func resetTree() {
         for root in roots {
             root.children = []
             root.loadState = .unloaded
+            root.hasChildFolders = nil
         }
     }
 
@@ -182,6 +281,7 @@ final class BrowserModel {
         guard chain.count > 1 else { return }
 
         for ancestor in chain.dropLast() {
+            syncPinnedPath()
             guard let node = findNode(ancestor, in: roots) else { return }
             let needsLoad = node.loadState != .loaded
             if needsLoad {
@@ -192,6 +292,51 @@ final class BrowserModel {
                 await loadChildren(of: node)
             }
         }
+    }
+
+    private func syncPinnedPath() {
+        guard !showHiddenInSidebar else {
+            pinnedPaths.removeAll()
+            return
+        }
+        guard let selectedURL, let root = bestRoot(for: selectedURL) else {
+            removePinnedPaths(pinnedPaths)
+            pinnedPaths.removeAll()
+            return
+        }
+        let chain = FolderRouting.chain(from: root.url, to: selectedURL)
+        var childPathsByParent: [String: Set<String>] = [:]
+        for index in chain.indices.dropFirst() {
+            let parentURL = chain[index - 1]
+            guard let parent = findNode(parentURL, in: roots), parent.loadState == .loaded else { continue }
+            childPathsByParent[parent.url.path] = Set(parent.children.map(\.url.path))
+        }
+        let missing = SidebarPathPin.missingLinks(chain: chain, childPathsByParent: childPathsByParent)
+        for link in missing {
+            guard Self.directoryExists(link.child), Self.directoryIsReadable(link.child) else { continue }
+            guard let parent = findNode(URL(fileURLWithPath: link.parent, isDirectory: true), in: roots) else { continue }
+            let childURL = URL(fileURLWithPath: link.child, isDirectory: true).directoryKey
+            let name = FileManager.default.displayName(atPath: childURL.path)
+            parent.children.append(FolderNode(url: childURL, name: name))
+            parent.children.sort { lhs, rhs in
+                lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+            }
+            pinnedPaths.insert(childURL.path)
+        }
+        let stale = SidebarPathPin.stalePins(pinned: pinnedPaths, chain: chain)
+        removePinnedPaths(stale)
+        pinnedPaths.subtract(stale)
+    }
+
+    private func removePinnedPaths(_ stale: Set<String>) {
+        guard !stale.isEmpty else { return }
+        func walk(_ nodes: [FolderNode]) {
+            for node in nodes {
+                node.children.removeAll { stale.contains($0.url.path) }
+                walk(node.children)
+            }
+        }
+        walk(roots)
     }
 
     private func bestRoot(for url: URL) -> FolderNode? {
@@ -213,5 +358,9 @@ final class BrowserModel {
     private static func directoryExists(_ path: String) -> Bool {
         var isDirectory: ObjCBool = false
         return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
+    }
+
+    private static func directoryIsReadable(_ path: String) -> Bool {
+        FileManager.default.isReadableFile(atPath: path)
     }
 }

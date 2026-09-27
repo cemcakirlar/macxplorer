@@ -38,6 +38,10 @@ final class AppSettings {
 
     private enum Key {
         static let showHidden = "showHidden"
+        static let showHiddenInSidebar = "showHiddenInSidebar"
+        static let sidebarRootHome = "sidebarRootHome"
+        static let sidebarRootRoot = "sidebarRootRoot"
+        static let sidebarRootVolumes = "sidebarRootVolumes"
         static let reopenLastFolder = "reopenLastFolder"
         static let lastFolderPath = "lastFolderPath"
         static let terminalAppPath = "terminalAppPath"
@@ -47,6 +51,22 @@ final class AppSettings {
 
     var showHidden: Bool {
         didSet { defaults.set(showHidden, forKey: Key.showHidden) }
+    }
+
+    var showHiddenInSidebar: Bool {
+        didSet { defaults.set(showHiddenInSidebar, forKey: Key.showHiddenInSidebar) }
+    }
+
+    var sidebarRootHome: String {
+        didSet { defaults.set(sidebarRootHome, forKey: Key.sidebarRootHome) }
+    }
+
+    var sidebarRootRoot: String {
+        didSet { defaults.set(sidebarRootRoot, forKey: Key.sidebarRootRoot) }
+    }
+
+    var sidebarRootVolumes: String {
+        didSet { defaults.set(sidebarRootVolumes, forKey: Key.sidebarRootVolumes) }
     }
 
     var reopenLastFolder: Bool {
@@ -70,6 +90,10 @@ final class AppSettings {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         showHidden = defaults.bool(forKey: Key.showHidden)
+        showHiddenInSidebar = defaults.bool(forKey: Key.showHiddenInSidebar)
+        sidebarRootHome = defaults.string(forKey: Key.sidebarRootHome) ?? SidebarRootLabel.home
+        sidebarRootRoot = defaults.string(forKey: Key.sidebarRootRoot) ?? SidebarRootLabel.root
+        sidebarRootVolumes = defaults.string(forKey: Key.sidebarRootVolumes) ?? SidebarRootLabel.volumes
         if defaults.object(forKey: Key.reopenLastFolder) == nil {
             reopenLastFolder = true
         } else {
@@ -90,6 +114,10 @@ final class AppSettings {
 
     func restoreDefaults() {
         showHidden = false
+        showHiddenInSidebar = false
+        sidebarRootHome = SidebarRootLabel.home
+        sidebarRootRoot = SidebarRootLabel.root
+        sidebarRootVolumes = SidebarRootLabel.volumes
         reopenLastFolder = true
         terminalAppPath = TerminalApps.defaultPath
     }

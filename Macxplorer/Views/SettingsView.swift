@@ -8,7 +8,7 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("General") {
-                Toggle("Show hidden files", isOn: $settings.showHidden)
+                Toggle("Show hidden files in list", isOn: $settings.showHidden)
                 Toggle("Reopen last folder", isOn: $settings.reopenLastFolder)
                 LabeledContent("Terminal app") {
                     Picker("Terminal app", selection: $settings.terminalAppPath) {
@@ -21,6 +21,12 @@ struct SettingsView: View {
                         chooseTerminalApp()
                     }
                 }
+            }
+            Section("Sidebar") {
+                Toggle("Show hidden folders in sidebar", isOn: $settings.showHiddenInSidebar)
+                TextField("Home", text: $settings.sidebarRootHome)
+                TextField("Root", text: $settings.sidebarRootRoot)
+                TextField("Volumes", text: $settings.sidebarRootVolumes)
             }
             Button("Restore Defaults") {
                 settings.restoreDefaults()

@@ -44,18 +44,32 @@ private struct SidebarBranch: View {
     private var expandedBranch: some View {
         trackExpansion()
         return Group {
-            if node.loadState == .loaded, node.children.isEmpty {
-                rowLabel
-            } else {
+            if showsDisclosure {
                 DisclosureGroup(isExpanded: expansion) {
                     branchContent
                 } label: {
                     rowLabel
                 }
+            } else {
+                rowLabel
             }
         }
         .tag(node.url)
         .id(node.url)
+        .task(id: model.treeRevision) {
+            await model.probeChildFolders(of: node)
+        }
+    }
+
+    private var showsDisclosure: Bool {
+        switch node.loadState {
+        case .loaded:
+            return !node.children.isEmpty
+        case .loading, .failed:
+            return true
+        case .unloaded:
+            return node.hasChildFolders == true
+        }
     }
 
     /// `DisclosureGroup` reads its binding outside `body`, so a double-click expand

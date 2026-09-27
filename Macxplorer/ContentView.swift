@@ -15,50 +15,21 @@ struct ContentView: View {
                 .navigationTitle(detailTitle)
         }
         .toolbar {
-            ToolbarItem(placement: .principal) {
-                PathBarView(url: model.selectedURL) { url in
-                    Task { await model.navigate(to: url) }
-                }
-                .frame(minWidth: 240, idealWidth: 480, maxWidth: 720)
-            }
-            ToolbarItemGroup(placement: .primaryAction) {
-                Toggle(isOn: $settings.showHidden) {
-                    Label("Hidden", systemImage: model.showHidden ? "eye" : "eye.slash")
-                }
-                .toggleStyle(.button)
-                .keyboardShortcut(KeyEquivalent("."), modifiers: [.command, .shift])
-                .help("Show or hide hidden files")
-
-                Button {
-                    Task { await model.refresh() }
-                } label: {
-                    Label("Refresh", systemImage: "arrow.clockwise")
-                }
-                .keyboardShortcut("r", modifiers: .command)
-                .help("Reload the current folder")
-
-                Button {
-                    openInFinder()
-                } label: {
-                    Label("Finder", systemImage: "folder")
-                }
-                .disabled(model.selectedURL == nil)
-                .help("Open the current folder in Finder")
-
-                Button {
-                    openInTerminal()
-                } label: {
-                    Label("Terminal", systemImage: "terminal")
-                }
-                .disabled(model.selectedURL == nil)
-                .help("Open the current folder in Terminal")
-            }
+            navigationToolbar
+            pathToolbar
+            actionToolbar
         }
         .task {
             await model.bootstrap()
         }
         .onChange(of: settings.showHidden) { _, show in
-            Task { await model.setShowHidden(show) }
+            Task { await model.setShowHiddenInList(show) }
+        }
+        .onChange(of: settings.showHiddenInSidebar) { _, show in
+            Task { await model.setShowHiddenInSidebar(show) }
+        }
+        .onChange(of: rootLabelSignature) { _, _ in
+            model.applyRootLabels()
         }
         .alert(
             "Can't Open Terminal",
@@ -70,6 +41,99 @@ struct ContentView: View {
                 Text(actionError ?? "")
             }
         )
+    }
+
+    @ToolbarContentBuilder
+    private var navigationToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .navigation) {
+            Button {
+                Task { await model.goBack() }
+            } label: {
+                Label("Back", systemImage: "chevron.backward")
+            }
+            .disabled(!model.canGoBack)
+            .keyboardShortcut("[", modifiers: .command)
+            .help("Back")
+
+            Button {
+                Task { await model.goForward() }
+            } label: {
+                Label("Forward", systemImage: "chevron.forward")
+            }
+            .disabled(!model.canGoForward)
+            .keyboardShortcut("]", modifiers: .command)
+            .help("Forward")
+
+            Button {
+                Task { await model.goUp() }
+            } label: {
+                Label("Up", systemImage: "arrow.up")
+            }
+            .disabled(!model.canGoUp)
+            .keyboardShortcut(.upArrow, modifiers: .command)
+            .help("Enclosing folder")
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var pathToolbar: some ToolbarContent {
+        if #available(macOS 26.0, *) {
+            ToolbarItem(placement: .principal) {
+                pathBar
+            }
+            .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: .principal) {
+                pathBar
+            }
+        }
+    }
+
+    private var pathBar: some View {
+        PathBarView(url: model.selectedURL) { url in
+            Task { await model.navigate(to: url) }
+        }
+        .frame(minWidth: 240, idealWidth: 640, maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+    }
+
+    @ToolbarContentBuilder
+    private var actionToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .primaryAction) {
+            Toggle(isOn: $settings.showHidden) {
+                Label("Hidden", systemImage: model.showHiddenInList ? "eye" : "eye.slash")
+            }
+            .toggleStyle(.button)
+            .keyboardShortcut(KeyEquivalent("."), modifiers: [.command, .shift])
+            .help("Show or hide hidden files in the list")
+
+            Button {
+                Task { await model.refresh() }
+            } label: {
+                Label("Refresh", systemImage: "arrow.clockwise")
+            }
+            .keyboardShortcut("r", modifiers: .command)
+            .help("Reload the current folder")
+
+            Button {
+                openInFinder()
+            } label: {
+                Label("Finder", systemImage: "folder")
+            }
+            .disabled(model.selectedURL == nil)
+            .help("Open the current folder in Finder")
+
+            Button {
+                openInTerminal()
+            } label: {
+                Label("Terminal", systemImage: "terminal")
+            }
+            .disabled(model.selectedURL == nil)
+            .help("Open the current folder in Terminal")
+        }
+    }
+
+    private var rootLabelSignature: String {
+        "\(settings.sidebarRootHome)\n\(settings.sidebarRootRoot)\n\(settings.sidebarRootVolumes)"
     }
 
     private var detailTitle: String {

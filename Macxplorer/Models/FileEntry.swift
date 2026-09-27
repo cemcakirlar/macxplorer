@@ -14,6 +14,12 @@ struct FileEntry: Identifiable, Hashable, Sendable {
     var opensAsFolder: Bool {
         isDirectory && !isPackage
     }
+
+    /// Header identity for the date column. Display order uses `modified`.
+    var modifiedColumn: Date { modified ?? .distantPast }
+
+    /// Header identity for the size column. Display order uses `size`.
+    var sizeColumn: Int64 { size ?? 0 }
 }
 
 extension URL {

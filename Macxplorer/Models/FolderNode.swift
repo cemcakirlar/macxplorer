@@ -17,9 +17,11 @@ final class FolderNode: Identifiable {
     }
 
     nonisolated let url: URL
-    nonisolated let name: String
+    var name: String
     var children: [FolderNode] = []
     var loadState: LoadState = .unloaded
+    /// `nil` until a one-level probe finishes. `false` means the row should not show a disclosure.
+    var hasChildFolders: Bool?
 
     nonisolated var id: URL { url }
 
