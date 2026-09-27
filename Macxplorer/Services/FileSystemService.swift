@@ -6,9 +6,14 @@ enum FileSystemService {
     static func listDirectory(at url: URL, showHidden: Bool) async throws -> [FileEntry] {
         let target = url
         let includeHidden = showHidden
-        return try await Task.detached(priority: .userInitiated) {
+        let work = Task.detached(priority: .userInitiated) {
             try readDirectory(at: target, showHidden: includeHidden)
-        }.value
+        }
+        return try await withTaskCancellationHandler {
+            try await work.value
+        } onCancel: {
+            work.cancel()
+        }
     }
 
     static func sortedForDisplay(_ entries: [FileEntry]) -> [FileEntry] {
@@ -35,6 +40,7 @@ enum FileSystemService {
     ]
 
     private static func readDirectory(at url: URL, showHidden: Bool) throws -> [FileEntry] {
+        try Task.checkCancellation()
         let options: FileManager.DirectoryEnumerationOptions = showHidden ? [] : [.skipsHiddenFiles]
         let urls = try FileManager.default.contentsOfDirectory(
             at: url,
@@ -45,7 +51,12 @@ enum FileSystemService {
         var entries: [FileEntry] = []
         entries.reserveCapacity(urls.count)
 
+        var examined = 0
         for itemURL in urls {
+            examined += 1
+            if examined.isMultiple(of: 64) {
+                try Task.checkCancellation()
+            }
             let values = try? itemURL.resourceValues(forKeys: keySet)
             let name = values?.localizedName ?? itemURL.lastPathComponent
             if name.isEmpty { continue }

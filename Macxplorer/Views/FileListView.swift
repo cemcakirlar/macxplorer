@@ -31,20 +31,12 @@ struct FileListView: View {
     private var table: some View {
         Table(model.entries, selection: $rowSelection) {
             TableColumn("Name") { entry in
-                cell(entry) {
-                    HStack(spacing: 6) {
-                        Image(nsImage: IconStore.shared.icon(for: entry.url))
-                            .resizable()
-                            .frame(width: 16, height: 16)
-                        Text(entry.name)
-                            .lineLimit(1)
-                    }
-                }
+                nameCell(entry)
             }
             .width(min: 180, ideal: 280)
 
             TableColumn("Date Modified") { entry in
-                cell(entry) {
+                plainCell {
                     Text(FileMetadataFormat.dateText(entry.modified))
                         .foregroundStyle(.secondary)
                 }
@@ -52,7 +44,7 @@ struct FileListView: View {
             .width(min: 140, ideal: 170)
 
             TableColumn("Size") { entry in
-                cell(entry, alignment: .trailing) {
+                plainCell(alignment: .trailing) {
                     Text(FileMetadataFormat.sizeText(bytes: entry.size))
                         .monospacedDigit()
                         .foregroundStyle(.secondary)
@@ -61,7 +53,7 @@ struct FileListView: View {
             .width(min: 70, ideal: 90)
 
             TableColumn("Kind") { entry in
-                cell(entry) {
+                plainCell {
                     Text(entry.kind)
                         .lineLimit(1)
                         .foregroundStyle(.secondary)
@@ -71,18 +63,28 @@ struct FileListView: View {
         }
     }
 
-    private func cell<Content: View>(
-        _ entry: FileEntry,
+    private func nameCell(_ entry: FileEntry) -> some View {
+        HStack(spacing: 6) {
+            Image(nsImage: IconStore.shared.image(for: entry.url, isDirectory: entry.opensAsFolder))
+                .resizable()
+                .frame(width: 16, height: 16)
+            Text(entry.name)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay {
+            RowDoubleClickCatcher {
+                open(entry)
+            }
+        }
+    }
+
+    private func plainCell<Content: View>(
         alignment: Alignment = .leading,
         @ViewBuilder content: () -> Content
     ) -> some View {
         content()
             .frame(maxWidth: .infinity, alignment: alignment)
-            .overlay {
-                RowDoubleClickCatcher {
-                    open(entry)
-                }
-            }
     }
 
     private func open(_ entry: FileEntry) {

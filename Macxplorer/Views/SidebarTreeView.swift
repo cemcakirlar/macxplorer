@@ -38,9 +38,12 @@ private struct SidebarBranch: View {
     var node: FolderNode
 
     var body: some View {
-        // Access the set in body so this row refreshes when expansion changes.
-        let _ = model.expanded
-        Group {
+        expandedBranch
+    }
+
+    private var expandedBranch: some View {
+        trackExpansion()
+        return Group {
             if node.loadState == .loaded, node.children.isEmpty {
                 rowLabel
             } else {
@@ -55,9 +58,15 @@ private struct SidebarBranch: View {
         .id(node.url)
     }
 
+    /// `DisclosureGroup` reads its binding outside `body`, so a double-click expand
+    /// would not refresh this row unless `body` also touches `model.expanded`.
+    private func trackExpansion() {
+        _ = model.expanded
+    }
+
     private var rowLabel: some View {
         HStack(spacing: 6) {
-            Image(nsImage: IconStore.shared.icon(for: node.url))
+            Image(nsImage: IconStore.shared.image(for: node.url, isDirectory: true))
                 .resizable()
                 .frame(width: 16, height: 16)
             Text(node.name)

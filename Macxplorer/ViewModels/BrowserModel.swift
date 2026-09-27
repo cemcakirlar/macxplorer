@@ -17,6 +17,8 @@ final class BrowserModel {
     private var detailTicket = 0
     private var childTickets: [String: Int] = [:]
     private var detailTask: Task<Void, Never>?
+    private var detailIconTask: Task<Void, Never>?
+    private var treeIconTask: Task<Void, Never>?
 
     init() {
         let home = FileManager.default.homeDirectoryForCurrentUser
@@ -74,6 +76,9 @@ final class BrowserModel {
                 FolderNode(url: entry.url, name: entry.name)
             }
             node.loadState = .loaded
+            scheduleIconPrefetch(node.children.map(\.url), forTree: true)
+        } catch is CancellationError {
+            return
         } catch {
             guard childTickets[path] == ticket, generation == listingGeneration else { return }
             node.children = []
@@ -88,6 +93,7 @@ final class BrowserModel {
         entries = []
         detailError = nil
         isLoadingDetail = true
+        detailIconTask?.cancel()
         detailTask?.cancel()
         detailTask = Task { await self.loadDetail(at: url, ticket: ticket, generation: generation) }
     }
@@ -100,6 +106,7 @@ final class BrowserModel {
             guard selectedURL?.path == url.directoryKey.path else { return }
             entries = listed
             detailError = nil
+            scheduleIconPrefetch(listed.map(\.url), forTree: false)
         } catch is CancellationError {
             return
         } catch {
@@ -109,6 +116,19 @@ final class BrowserModel {
         }
         guard ticket == detailTicket else { return }
         isLoadingDetail = false
+    }
+
+    private func scheduleIconPrefetch(_ urls: [URL], forTree: Bool) {
+        let task = Task {
+            await IconStore.shared.prefetch(urls)
+        }
+        if forTree {
+            treeIconTask?.cancel()
+            treeIconTask = task
+        } else {
+            detailIconTask?.cancel()
+            detailIconTask = task
+        }
     }
 
     private func reloadListings() async {
@@ -141,7 +161,7 @@ final class BrowserModel {
     private func expandAncestors(of url: URL) async {
         let target = url.directoryKey
         guard let root = bestRoot(for: target) else { return }
-        let chain = pathChain(from: root.url, to: target)
+        let chain = FolderRouting.chain(from: root.url, to: target)
         guard chain.count > 1 else { return }
 
         for ancestor in chain.dropLast() {
@@ -158,40 +178,10 @@ final class BrowserModel {
     }
 
     private func bestRoot(for url: URL) -> FolderNode? {
-        let path = url.directoryKey.path
-        return roots
-            .filter { root in
-                let rootPath = root.url.path
-                if rootPath == "/" { return true }
-                return path == rootPath || path.hasPrefix(rootPath + "/")
-            }
-            .max { $0.url.path.count < $1.url.path.count }
-    }
-
-    private func pathChain(from root: URL, to target: URL) -> [URL] {
-        let rootURL = root.directoryKey
-        let targetURL = target.directoryKey
-        let rootPath = rootURL.path
-        let targetPath = targetURL.path
-        if targetPath == rootPath { return [rootURL] }
-
-        let remainder: String
-        if rootPath == "/" {
-            guard targetPath.hasPrefix("/") else { return [rootURL] }
-            remainder = String(targetPath.dropFirst())
-        } else {
-            let prefix = rootPath + "/"
-            guard targetPath.hasPrefix(prefix) else { return [rootURL] }
-            remainder = String(targetPath.dropFirst(prefix.count))
+        guard let match = FolderRouting.bestRoot(among: roots.map(\.url), for: url) else {
+            return nil
         }
-
-        var chain = [rootURL]
-        var current = rootURL
-        for part in remainder.split(separator: "/") {
-            current = current.appendingPathComponent(String(part)).directoryKey
-            chain.append(current)
-        }
-        return chain
+        return roots.first { $0.url.path == match.path }
     }
 
     private func findNode(_ url: URL, in nodes: [FolderNode]) -> FolderNode? {
