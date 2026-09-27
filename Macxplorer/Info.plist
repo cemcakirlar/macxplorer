@@ -16,6 +16,8 @@
 	<string>MacXplorer</string>
 	<key>CFBundleName</key>
 	<string>MacXplorer</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2026 Cem Çakırlar</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
