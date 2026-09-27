@@ -4,6 +4,7 @@ import SwiftUI
 struct ContentView: View {
     @Bindable var settings: AppSettings
     @State private var model = BrowserModel()
+    @State private var listSelection = Set<URL>()
     @State private var actionError: String?
 
     var body: some View {
@@ -11,8 +12,16 @@ struct ContentView: View {
             SidebarTreeView(model: model)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 480)
         } detail: {
-            FileListView(model: model)
+            FileListView(model: model, rowSelection: $listSelection)
                 .navigationTitle(detailTitle)
+        }
+        .inspector(isPresented: $settings.showPreview) {
+            PreviewInspector(
+                entries: model.entries,
+                selection: listSelection,
+                autoplay: settings.previewAutoplay
+            )
+            .inspectorColumnWidth(min: 220, ideal: 280, max: 900)
         }
         .toolbar {
             navigationToolbar
@@ -21,6 +30,9 @@ struct ContentView: View {
         }
         .task {
             await model.bootstrap()
+        }
+        .onChange(of: model.selectedURL) { _, _ in
+            listSelection = []
         }
         .onChange(of: settings.showHidden) { _, show in
             Task { await model.setShowHiddenInList(show) }
@@ -113,6 +125,13 @@ struct ContentView: View {
             }
             .keyboardShortcut("r", modifiers: .command)
             .help("Reload the current folder")
+
+            Toggle(isOn: $settings.showPreview) {
+                Label("Preview", systemImage: "sidebar.trailing")
+            }
+            .toggleStyle(.button)
+            .keyboardShortcut("p", modifiers: [.command, .shift])
+            .help("Show or hide the preview")
 
             Button {
                 openInFinder()

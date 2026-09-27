@@ -45,6 +45,8 @@ final class AppSettings {
         static let reopenLastFolder = "reopenLastFolder"
         static let lastFolderPath = "lastFolderPath"
         static let terminalAppPath = "terminalAppPath"
+        static let showPreview = "showPreview"
+        static let previewAutoplay = "previewAutoplay"
     }
 
     private let defaults: UserDefaults
@@ -87,6 +89,14 @@ final class AppSettings {
         didSet { defaults.set(terminalAppPath, forKey: Key.terminalAppPath) }
     }
 
+    var showPreview: Bool {
+        didSet { defaults.set(showPreview, forKey: Key.showPreview) }
+    }
+
+    var previewAutoplay: Bool {
+        didSet { defaults.set(previewAutoplay, forKey: Key.previewAutoplay) }
+    }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         showHidden = defaults.bool(forKey: Key.showHidden)
@@ -106,6 +116,8 @@ final class AppSettings {
         } else {
             terminalAppPath = TerminalApps.defaultPath
         }
+        showPreview = defaults.bool(forKey: Key.showPreview)
+        previewAutoplay = defaults.bool(forKey: Key.previewAutoplay)
     }
 
     func rememberFolder(_ url: URL) {
@@ -120,5 +132,7 @@ final class AppSettings {
         sidebarRootVolumes = SidebarRootLabel.volumes
         reopenLastFolder = true
         terminalAppPath = TerminalApps.defaultPath
+        showPreview = false
+        previewAutoplay = false
     }
 }

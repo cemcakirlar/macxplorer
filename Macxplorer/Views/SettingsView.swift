@@ -22,6 +22,9 @@ struct SettingsView: View {
                     }
                 }
             }
+            Section("Preview") {
+                Toggle("Play media automatically", isOn: $settings.previewAutoplay)
+            }
             Section("Sidebar") {
                 Toggle("Show hidden folders in sidebar", isOn: $settings.showHiddenInSidebar)
                 TextField("Home", text: $settings.sidebarRootHome)

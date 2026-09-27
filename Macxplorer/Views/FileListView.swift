@@ -3,7 +3,7 @@ import SwiftUI
 
 struct FileListView: View {
     var model: BrowserModel
-    @State private var rowSelection = Set<URL>()
+    @Binding var rowSelection: Set<URL>
     @State private var sortOrder = [KeyPathComparator(\FileEntry.name)]
 
     var body: some View {
@@ -102,7 +102,7 @@ struct FileListView: View {
 }
 
 @MainActor
-private enum FileMetadataFormat {
+enum FileMetadataFormat {
     static func dateText(_ date: Date?) -> String {
         guard let date else { return "—" }
         return date.formatted(date: .abbreviated, time: .shortened)
