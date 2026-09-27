@@ -19,26 +19,39 @@ final class BrowserModel {
     private var detailTask: Task<Void, Never>?
     private var detailIconTask: Task<Void, Never>?
     private var treeIconTask: Task<Void, Never>?
+    private let settings: AppSettings
 
-    init() {
+    init(settings: AppSettings = .shared) {
+        self.settings = settings
+        showHidden = settings.showHidden
         let home = FileManager.default.homeDirectoryForCurrentUser
         roots = [
             FolderNode(url: home, name: "Home"),
             FolderNode(url: URL(fileURLWithPath: "/", isDirectory: true), name: "Root"),
             FolderNode(url: URL(fileURLWithPath: "/Volumes", isDirectory: true), name: "Volumes"),
         ]
-        selectedURL = home.directoryKey
+        selectedURL = LaunchFolder.url(
+            reopenLastFolder: settings.reopenLastFolder,
+            lastPath: settings.lastFolderPath,
+            home: home,
+            directoryExists: Self.directoryExists
+        )
     }
 
     func bootstrap() async {
         guard let selectedURL else { return }
-        beginDetailLoad(selectedURL)
+        if settings.reopenLastFolder {
+            await navigate(to: selectedURL)
+        } else {
+            beginDetailLoad(selectedURL)
+        }
     }
 
     func select(_ url: URL) {
         let next = url.directoryKey
         guard next.path != selectedURL?.path else { return }
         selectedURL = next
+        settings.rememberFolder(next)
         beginDetailLoad(next)
     }
 
@@ -46,6 +59,7 @@ final class BrowserModel {
         let next = url.directoryKey
         appLogger.info("Opening \(next.path, privacy: .public)")
         selectedURL = next
+        settings.rememberFolder(next)
         beginDetailLoad(next)
         await expandAncestors(of: next)
         selectedURL = next
@@ -194,5 +208,10 @@ final class BrowserModel {
             if let found = findNode(url, in: node.children) { return found }
         }
         return nil
+    }
+
+    private static func directoryExists(_ path: String) -> Bool {
+        var isDirectory: ObjCBool = false
+        return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
     }
 }

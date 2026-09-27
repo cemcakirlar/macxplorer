@@ -6,14 +6,18 @@ let appLogger = Logger(subsystem: "com.cakirlarc.macxplorer", category: "app")
 @main
 struct MacxplorerApp: App {
     init() {
-        appLogger.info("Macxplorer started")
+        appLogger.info("MacXplorer started")
     }
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(settings: .shared)
         }
         .defaultSize(width: 1100, height: 700)
         .windowToolbarStyle(.unified)
+
+        Settings {
+            SettingsView(settings: .shared)
+        }
     }
 }

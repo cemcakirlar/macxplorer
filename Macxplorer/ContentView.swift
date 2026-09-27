@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 struct ContentView: View {
+    @Bindable var settings: AppSettings
     @State private var model = BrowserModel()
     @State private var actionError: String?
 
@@ -21,7 +22,7 @@ struct ContentView: View {
                 .frame(minWidth: 240, idealWidth: 480, maxWidth: 720)
             }
             ToolbarItemGroup(placement: .primaryAction) {
-                Toggle(isOn: showHiddenBinding) {
+                Toggle(isOn: $settings.showHidden) {
                     Label("Hidden", systemImage: model.showHidden ? "eye" : "eye.slash")
                 }
                 .toggleStyle(.button)
@@ -56,6 +57,9 @@ struct ContentView: View {
         .task {
             await model.bootstrap()
         }
+        .onChange(of: settings.showHidden) { _, show in
+            Task { await model.setShowHidden(show) }
+        }
         .alert(
             "Can't Open Terminal",
             isPresented: actionErrorIsPresented,
@@ -69,17 +73,8 @@ struct ContentView: View {
     }
 
     private var detailTitle: String {
-        guard let selectedURL = model.selectedURL else { return "Macxplorer" }
+        guard let selectedURL = model.selectedURL else { return "MacXplorer" }
         return FileManager.default.displayName(atPath: selectedURL.path)
-    }
-
-    private var showHiddenBinding: Binding<Bool> {
-        Binding(
-            get: { model.showHidden },
-            set: { show in
-                Task { await model.setShowHidden(show) }
-            }
-        )
     }
 
     private func openInFinder() {
@@ -104,7 +99,7 @@ struct ContentView: View {
 
     private func openInTerminal() {
         guard let url = model.selectedURL else { return }
-        let terminalURL = URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app")
+        let terminalURL = URL(fileURLWithPath: settings.terminalAppPath)
         let configuration = NSWorkspace.OpenConfiguration()
         NSWorkspace.shared.open(
             [url],
