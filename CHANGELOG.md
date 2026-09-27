@@ -3,6 +3,31 @@
 All notable changes to MacXplorer will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.1.0] - 2026-09-27
+
+### Features
+- feat: split settings into tabs (`693de1b`)
+- feat: add a Quick Look preview pane (`b70a5dd`)
+- feat: add history, sorting, and a fitting path bar (`223d68a`)
+
+### Maintenance & Tooling
+- docs: document shortcuts and settings (`0946c90`)
+- chore: add About panel credits (`ee20c82`)
+- build: require macOS 15 (`8e2c2f1`)
+
+---
+
+### macOS Installation & Gatekeeper Note
+Because this open-source build is distributed outside the Mac App Store without a paid Apple Developer ID, macOS Gatekeeper may show a warning (*"Apple could not verify..."*) on first launch.
+
+**To open the app, run this single command in Terminal:**
+```bash
+xattr -cr "/Applications/Macxplorer.app"
+```
+*Alternatively, open **System Settings ➔ Privacy & Security** and click **Open Anyway**.* 
+
+
+
 ## [v1.0.2] - 2026-09-27
 
 ### Features
