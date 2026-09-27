@@ -6,8 +6,27 @@ struct SettingsView: View {
     @Bindable var settings: AppSettings
 
     var body: some View {
+        TabView {
+            Tab("General", systemImage: "gearshape") {
+                GeneralSettingsTab(settings: settings)
+            }
+            Tab("Preview", systemImage: "play.rectangle") {
+                PreviewSettingsTab(settings: settings)
+            }
+            Tab("Sidebar", systemImage: "sidebar.left") {
+                SidebarSettingsTab(settings: settings)
+            }
+        }
+        .frame(width: 460, height: 280)
+    }
+}
+
+private struct GeneralSettingsTab: View {
+    @Bindable var settings: AppSettings
+
+    var body: some View {
         Form {
-            Section("General") {
+            Section {
                 Toggle("Show hidden files in list", isOn: $settings.showHidden)
                 Toggle("Reopen last folder", isOn: $settings.reopenLastFolder)
                 LabeledContent("Terminal app") {
@@ -22,21 +41,11 @@ struct SettingsView: View {
                     }
                 }
             }
-            Section("Preview") {
-                Toggle("Play media automatically", isOn: $settings.previewAutoplay)
-            }
-            Section("Sidebar") {
-                Toggle("Show hidden folders in sidebar", isOn: $settings.showHiddenInSidebar)
-                TextField("Home", text: $settings.sidebarRootHome)
-                TextField("Root", text: $settings.sidebarRootRoot)
-                TextField("Volumes", text: $settings.sidebarRootVolumes)
-            }
             Button("Restore Defaults") {
                 settings.restoreDefaults()
             }
         }
         .formStyle(.grouped)
-        .frame(width: 460)
     }
 
     private var terminalChoices: [TerminalChoice] {
@@ -59,5 +68,32 @@ struct SettingsView: View {
         panel.prompt = "Choose"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         settings.terminalAppPath = url.standardizedFileURL.path
+    }
+}
+
+private struct PreviewSettingsTab: View {
+    @Bindable var settings: AppSettings
+
+    var body: some View {
+        Form {
+            Toggle("Play media automatically", isOn: $settings.previewAutoplay)
+        }
+        .formStyle(.grouped)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+}
+
+private struct SidebarSettingsTab: View {
+    @Bindable var settings: AppSettings
+
+    var body: some View {
+        Form {
+            Toggle("Show hidden folders in sidebar", isOn: $settings.showHiddenInSidebar)
+            TextField("Home", text: $settings.sidebarRootHome)
+            TextField("Root", text: $settings.sidebarRootRoot)
+            TextField("Volumes", text: $settings.sidebarRootVolumes)
+        }
+        .formStyle(.grouped)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 }
