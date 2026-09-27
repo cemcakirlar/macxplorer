@@ -20,3 +20,7 @@ Sandbox is already off (`ENABLE_APP_SANDBOX = NO` and `Macxplorer/Macxplorer.ent
 5. Use the path bar to jump upward. **Hidden** (Command-Shift-.), **Refresh** (Command-R), **Finder**, and **Terminal** are in the toolbar.
 
 Directory size stays “—”. Folder sizes are not calculated.
+
+## License
+
+[MIT](LICENSE)
