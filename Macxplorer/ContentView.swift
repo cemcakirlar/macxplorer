@@ -84,7 +84,11 @@ struct ContentView: View {
 
     private func openInFinder() {
         guard let url = model.selectedURL else { return }
-        NSWorkspace.shared.open(url)
+        if NSWorkspace.shared.open(url) {
+            appLogger.info("Opened Finder at \(url.path, privacy: .public)")
+        } else {
+            appLogger.info("Failed to open Finder at \(url.path, privacy: .public)")
+        }
     }
 
     private var actionErrorIsPresented: Binding<Bool> {
@@ -107,10 +111,14 @@ struct ContentView: View {
             withApplicationAt: terminalURL,
             configuration: configuration
         ) { _, error in
-            guard let error else { return }
-            let message = error.localizedDescription
-            Task { @MainActor in
-                actionError = message
+            if let error {
+                let message = error.localizedDescription
+                appLogger.info("Failed to open Terminal: \(message, privacy: .public)")
+                Task { @MainActor in
+                    actionError = message
+                }
+            } else {
+                appLogger.info("Opened Terminal at \(url.path, privacy: .public)")
             }
         }
     }

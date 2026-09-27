@@ -44,6 +44,7 @@ final class BrowserModel {
 
     func navigate(to url: URL) async {
         let next = url.directoryKey
+        appLogger.info("Opening \(next.path, privacy: .public)")
         selectedURL = next
         beginDetailLoad(next)
         await expandAncestors(of: next)
@@ -106,6 +107,7 @@ final class BrowserModel {
             guard selectedURL?.path == url.directoryKey.path else { return }
             entries = listed
             detailError = nil
+            appLogger.info("Listed \(listed.count) items in \(url.path, privacy: .public)")
             scheduleIconPrefetch(listed.map(\.url), forTree: false)
         } catch is CancellationError {
             return
@@ -113,6 +115,7 @@ final class BrowserModel {
             guard ticket == detailTicket, generation == listingGeneration else { return }
             entries = []
             detailError = error.localizedDescription
+            appLogger.info("Failed to list \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }
         guard ticket == detailTicket else { return }
         isLoadingDetail = false
