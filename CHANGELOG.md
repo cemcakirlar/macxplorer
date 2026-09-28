@@ -3,6 +3,31 @@
 All notable changes to MacXplorer will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.4.0] - 2026-09-28
+
+### Features
+- feat(files): paste and drop items into a folder (`e155532`)
+- feat(transfer): copy or move files without deleting them (`f5b53d2`)
+- feat(folder): create an untitled folder and rename it (`c1071d7`)
+- feat(trash): move the selection to the Trash (`10e8b42`)
+- feat(rename): rename one item inline (`e4ecc9c`)
+
+### Maintenance & Tooling
+- chore: plans (`04209be`)
+
+---
+
+### macOS Installation & Gatekeeper Note
+Because this open-source build is distributed outside the Mac App Store without a paid Apple Developer ID, macOS Gatekeeper may show a warning (*"Apple could not verify..."*) on first launch.
+
+**To open the app, run this single command in Terminal:**
+```bash
+xattr -cr "/Applications/Macxplorer.app"
+```
+*Alternatively, open **System Settings ➔ Privacy & Security** and click **Open Anyway**.* 
+
+
+
 ## [v1.3.0] - 2026-09-28
 
 ### Features
