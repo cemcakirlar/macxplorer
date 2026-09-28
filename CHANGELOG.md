@@ -3,6 +3,31 @@
 All notable changes to MacXplorer will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.5.0] - 2026-09-29
+
+### Bug Fixes
+- fix(drop): open the target and keep the sidebar (`5d27b12`)
+- fix(transfer): put back an item when replace fails (`7278601`)
+- fix(drop): show copy when the disk differs (`9b4ca9b`)
+- fix(rename): change case without a temporary name (`922e914`)
+
+### Maintenance & Tooling
+- chore: record the drop target plan (`53d3ff7`)
+- chore: record the review fix plan (`4ab736e`)
+
+---
+
+### macOS Installation & Gatekeeper Note
+Because this open-source build is distributed outside the Mac App Store without a paid Apple Developer ID, macOS Gatekeeper may show a warning (*"Apple could not verify..."*) on first launch.
+
+**To open the app, run this single command in Terminal:**
+```bash
+xattr -cr "/Applications/Macxplorer.app"
+```
+*Alternatively, open **System Settings ➔ Privacy & Security** and click **Open Anyway**.* 
+
+
+
 ## [v1.4.0] - 2026-09-28
 
 ### Features
