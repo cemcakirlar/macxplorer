@@ -66,41 +66,85 @@ struct RenameClickCatcher: NSViewRepresentable {
     var isSelected: Bool
     var onSlowClick: @MainActor () -> Void
     var onDoubleClick: (@MainActor () -> Void)?
+    var onPrimaryClick: (@MainActor (NSEvent.ModifierFlags) -> Void)?
+    var fileDragRow: URL?
+    var fileDragSelection: [URL] = []
 
     func makeNSView(context: Context) -> RenameClickView {
         let view = RenameClickView()
-        view.isSelected = isSelected
-        view.onSlowClick = onSlowClick
-        view.onDoubleClick = onDoubleClick
+        apply(to: view)
         return view
     }
 
     func updateNSView(_ nsView: RenameClickView, context: Context) {
-        nsView.isSelected = isSelected
-        nsView.onSlowClick = onSlowClick
-        nsView.onDoubleClick = onDoubleClick
+        apply(to: nsView)
         if !isSelected {
             nsView.cancelPendingClick()
         }
     }
+
+    private func apply(to view: RenameClickView) {
+        view.isSelected = isSelected
+        view.onSlowClick = onSlowClick
+        view.onDoubleClick = onDoubleClick
+        view.onPrimaryClick = onPrimaryClick
+        view.fileDragRow = fileDragRow
+        view.fileDragSelection = fileDragSelection
+    }
 }
 
-final class RenameClickView: NSView {
+struct FileDragSource: NSViewRepresentable {
+    var row: URL
+    var selection: [URL]
+    var onPrimaryClick: (@MainActor (NSEvent.ModifierFlags) -> Void)?
+
+    func makeNSView(context: Context) -> RenameClickView {
+        let view = RenameClickView()
+        view.fileDragRow = row
+        view.fileDragSelection = selection
+        view.onPrimaryClick = onPrimaryClick
+        return view
+    }
+
+    func updateNSView(_ nsView: RenameClickView, context: Context) {
+        nsView.fileDragRow = row
+        nsView.fileDragSelection = selection
+        nsView.onPrimaryClick = onPrimaryClick
+    }
+}
+
+final class RenameClickView: NSView, NSDraggingSource {
     var isSelected = false
     var onSlowClick: (@MainActor () -> Void)?
     var onDoubleClick: (@MainActor () -> Void)?
+    var onPrimaryClick: (@MainActor (NSEvent.ModifierFlags) -> Void)?
+    var fileDragRow: URL?
+    var fileDragSelection: [URL] = []
     private var timer: Timer?
+    private var dragStart: NSPoint?
+    private var dragged = false
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        bounds.contains(point) ? self : nil
+    }
 
     override func mouseDown(with event: NSEvent) {
+        dragged = false
+        dragStart = convert(event.locationInWindow, from: nil)
         if event.clickCount >= 2 {
             cancelPendingClick()
+            deliverClick(event.modifierFlags)
             let action = onDoubleClick
             if let action {
                 Task { @MainActor in
                     action()
                 }
             }
-        } else if event.clickCount == 1, isSelected {
+            return
+        }
+        if event.clickCount == 1, isSelected {
             cancelPendingClick()
             let delay = NSEvent.doubleClickInterval
             timer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
@@ -111,12 +155,58 @@ final class RenameClickView: NSView {
                 }
             }
         }
-        nextResponder?.mouseDown(with: event)
     }
 
     override func mouseDragged(with event: NSEvent) {
         cancelPendingClick()
-        nextResponder?.mouseDragged(with: event)
+        guard event.clickCount < 2, let dragStart, let row = fileDragRow else { return }
+        let point = convert(event.locationInWindow, from: nil)
+        guard hypot(point.x - dragStart.x, point.y - dragStart.y) >= 4 else { return }
+        dragged = true
+        self.dragStart = nil
+        let urls = draggingURLs(primary: row)
+        guard !urls.isEmpty else { return }
+        if !isSelected {
+            deliverClick([])
+        }
+        let session = beginDraggingSession(with: draggingItems(for: urls, at: point), event: event, source: self)
+        session.animatesToStartingPositionsOnCancelOrFail = true
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        dragStart = nil
+        if !dragged, event.clickCount < 2 {
+            deliverClick(event.modifierFlags)
+        }
+        dragged = false
+    }
+
+    private func deliverClick(_ flags: NSEvent.ModifierFlags) {
+        let click = onPrimaryClick
+        Task { @MainActor in
+            click?(flags)
+        }
+    }
+
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        [.copy, .move]
+    }
+
+    private func draggingURLs(primary: URL) -> [URL] {
+        let primaryKey = Favorites.key(for: primary)
+        let selected = fileDragSelection.contains { Favorites.key(for: $0) == primaryKey }
+        return selected ? fileDragSelection : [primary]
+    }
+
+    private func draggingItems(for urls: [URL], at point: NSPoint) -> [NSDraggingItem] {
+        urls.enumerated().map { index, url in
+            let item = NSDraggingItem(pasteboardWriter: url as NSURL)
+            let icon = NSWorkspace.shared.icon(forFile: url.path)
+            icon.size = NSSize(width: 32, height: 32)
+            let origin = NSPoint(x: point.x - 16 + CGFloat(index) * 6, y: point.y - 16)
+            item.setDraggingFrame(NSRect(origin: origin, size: icon.size), contents: icon)
+            return item
+        }
     }
 
     override func viewDidMoveToWindow() {
@@ -202,5 +292,30 @@ final class CreatedFolderIdentity: @unchecked Sendable {
 
     init(_ value: NSObject?) {
         self.value = value
+    }
+}
+
+struct TransferUndoItem: Sendable {
+    var write: TransferWrite
+    var identity: CreatedFolderIdentity
+}
+
+@MainActor
+final class TransferUndoRelay {
+    var undo: (([TransferUndoItem]) async -> [TransferUndoItem])?
+
+    func register(undoManager: UndoManager?, items: [TransferUndoItem], actionName: String) {
+        guard let undoManager, !items.isEmpty else { return }
+        undoManager.registerUndo(withTarget: self) { relay in
+            let pending = items
+            let name = actionName
+            Task { @MainActor in
+                let remaining = await relay.undo?(pending) ?? pending
+                if !remaining.isEmpty {
+                    relay.register(undoManager: undoManager, items: remaining, actionName: name)
+                }
+            }
+        }
+        undoManager.setActionName(actionName)
     }
 }

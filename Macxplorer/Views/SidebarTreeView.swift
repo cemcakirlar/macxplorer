@@ -5,6 +5,7 @@ struct SidebarTreeView: View {
     var model: BrowserModel
     var actions: ItemActions
     var rename: RenameEditing
+    var receiveDrop: ([URL], DropTargetKind, Bool) -> Void
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -16,7 +17,9 @@ struct SidebarTreeView: View {
                                 path: path,
                                 isAvailable: model.favoriteIsAvailable(path),
                                 isSelected: model.sidebarSelection == .favorite(path),
-                                rename: rename
+                                rename: rename,
+                                receiveDrop: receiveDrop,
+                                onSelect: { model.selectInSidebar(.favorite(path)) }
                             )
                         }
                         .onMove { source, destination in
@@ -26,7 +29,7 @@ struct SidebarTreeView: View {
                 }
                 Section {
                     ForEach(model.roots) { node in
-                        SidebarBranch(model: model, node: node, rename: rename)
+                        SidebarBranch(model: model, node: node, rename: rename, receiveDrop: receiveDrop)
                     }
                 }
             }
@@ -62,6 +65,7 @@ struct SidebarTreeView: View {
                 }
                 return .handled
             }
+            .focusedSceneValue(\.fileCopyAction, FileCopyAction(urls: copiedURLs))
             .onChange(of: model.scrollToURL) { _, url in
                 guard let url else { return }
                 Task { @MainActor in
@@ -103,6 +107,18 @@ struct SidebarTreeView: View {
         }
     }
 
+    private var copiedURLs: [URL] {
+        switch model.sidebarSelection {
+        case .favorite(let path):
+            guard model.favoriteIsAvailable(path) else { return [] }
+            return [URL(fileURLWithPath: path, isDirectory: true)]
+        case .folder(let url):
+            return [url]
+        case nil:
+            return []
+        }
+    }
+
     private var selection: Binding<SidebarSelection?> {
         Binding(
             get: { model.sidebarSelection },
@@ -119,6 +135,8 @@ private struct FavoriteRow: View {
     var isAvailable: Bool
     var isSelected: Bool
     var rename: RenameEditing
+    var receiveDrop: ([URL], DropTargetKind, Bool) -> Void
+    var onSelect: () -> Void
 
     var body: some View {
         HStack(spacing: 6) {
@@ -132,12 +150,22 @@ private struct FavoriteRow: View {
         .contentShape(Rectangle())
         .help(path)
         .tag(SidebarSelection.favorite(path))
+        .onDrop(
+            of: [.fileURL],
+            delegate: FileDropDelegate(
+                target: isAvailable ? .folder(url) : .missing,
+                receive: receiveDrop
+            )
+        )
         .overlay {
             if isAvailable, !isRenaming {
                 RenameClickCatcher(
                     isSelected: isSelected,
                     onSlowClick: { rename.begin(url) },
-                    onDoubleClick: nil
+                    onDoubleClick: nil,
+                    onPrimaryClick: { _ in onSelect() },
+                    fileDragRow: isAvailable ? url : nil,
+                    fileDragSelection: [url]
                 )
             }
         }
@@ -174,6 +202,7 @@ private struct SidebarBranch: View {
     var model: BrowserModel
     var node: FolderNode
     var rename: RenameEditing
+    var receiveDrop: ([URL], DropTargetKind, Bool) -> Void
 
     var body: some View {
         expandedBranch
@@ -202,8 +231,24 @@ private struct SidebarBranch: View {
         rowLabel
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
+            .overlay {
+                if !isRenaming {
+                    RenameClickCatcher(
+                        isSelected: model.sidebarSelection == .folder(node.url),
+                        onSlowClick: { rename.begin(node.url) },
+                        onDoubleClick: nil,
+                        onPrimaryClick: { _ in model.selectInSidebar(.folder(node.url)) },
+                        fileDragRow: node.url,
+                        fileDragSelection: [node.url]
+                    )
+                }
+            }
             .tag(SidebarSelection.folder(node.url))
             .id(node.url)
+            .onDrop(
+                of: [.fileURL],
+                delegate: FileDropDelegate(target: .folder(node.url), receive: receiveDrop)
+            )
     }
 
     private var showsDisclosure: Bool {
@@ -241,15 +286,6 @@ private struct SidebarBranch: View {
                     .lineLimit(1)
             }
         }
-        .overlay {
-            if !isRenaming {
-                RenameClickCatcher(
-                    isSelected: model.sidebarSelection == .folder(node.url),
-                    onSlowClick: { rename.begin(node.url) },
-                    onDoubleClick: nil
-                )
-            }
-        }
     }
 
     private var isRenaming: Bool {
@@ -270,7 +306,7 @@ private struct SidebarBranch: View {
                 .lineLimit(3)
         case .loaded:
             ForEach(node.children) { child in
-                SidebarBranch(model: model, node: child, rename: rename)
+                SidebarBranch(model: model, node: child, rename: rename, receiveDrop: receiveDrop)
             }
         }
     }

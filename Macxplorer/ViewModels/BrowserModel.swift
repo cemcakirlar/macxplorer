@@ -195,10 +195,16 @@ final class BrowserModel {
 
     /// Reloads the open folder and returns the listed URL for `url`, if it appears.
     func refreshedEntry(matching url: URL) async -> URL? {
+        let matches = await refreshedEntries(matching: [url])
+        return matches.first
+    }
+
+    /// Reloads the open folder and returns the listed URLs that match `urls`.
+    func refreshedEntries(matching urls: [URL]) async -> [URL] {
         await refresh()
         await detailTask?.value
-        let key = Favorites.key(for: url)
-        return entries.first { Favorites.key(for: $0.url) == key }?.url
+        let keys = Set(urls.map { Favorites.key(for: $0) })
+        return entries.filter { keys.contains(Favorites.key(for: $0.url)) }.map(\.url)
     }
 
     /// Moves open-folder state onto `newURL` when the renamed item is that folder or a parent of it.

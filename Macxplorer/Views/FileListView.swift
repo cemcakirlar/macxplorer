@@ -6,6 +6,7 @@ struct FileListView: View {
     @Binding var rowSelection: Set<URL>
     var actions: ItemActions
     var rename: RenameEditing
+    var receiveDrop: ([URL], DropTargetKind, Bool) -> Void
     @State private var sortOrder = [KeyPathComparator(\FileEntry.name)]
 
     var body: some View {
@@ -25,10 +26,17 @@ struct FileListView: View {
                     systemImage: "folder",
                     description: Text("This folder is empty.")
                 )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .onDrop(of: [.fileURL], delegate: FileDropDelegate(target: openFolderTarget, receive: receiveDrop))
             } else {
                 table
             }
         }
+        .focusedSceneValue(\.fileCopyAction, FileCopyAction(urls: copiedURLs))
+    }
+
+    private var copiedURLs: [URL] {
+        rowSelection.sorted { $0.path < $1.path }
     }
 
     private var rows: [FileEntry] {
@@ -38,32 +46,38 @@ struct FileListView: View {
     private var table: some View {
         Table(rows, selection: $rowSelection, sortOrder: $sortOrder) {
             TableColumn("Name", value: \.name) { entry in
-                nameCell(entry)
+                rowDrop(for: entry) { nameCell(entry) }
             }
             .width(min: 180, ideal: 280)
 
             TableColumn("Date Modified", value: \.modifiedColumn) { entry in
-                plainCell {
-                    Text(FileMetadataFormat.dateText(entry.modified))
-                        .foregroundStyle(.secondary)
+                rowDrop(for: entry, dragFromCell: true) {
+                    plainCell {
+                        Text(FileMetadataFormat.dateText(entry.modified))
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             .width(min: 140, ideal: 170)
 
             TableColumn("Size", value: \.sizeColumn) { entry in
-                plainCell(alignment: .trailing) {
-                    Text(FileMetadataFormat.sizeText(bytes: entry.size))
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
+                rowDrop(for: entry, dragFromCell: true) {
+                    plainCell(alignment: .trailing) {
+                        Text(FileMetadataFormat.sizeText(bytes: entry.size))
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             .width(min: 70, ideal: 90)
 
             TableColumn("Kind", value: \.kind) { entry in
-                plainCell {
-                    Text(entry.kind)
-                        .lineLimit(1)
-                        .foregroundStyle(.secondary)
+                rowDrop(for: entry, dragFromCell: true) {
+                    plainCell {
+                        Text(entry.kind)
+                            .lineLimit(1)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             .width(min: 100, ideal: 140)
@@ -93,6 +107,68 @@ struct FileListView: View {
             actions.moveToTrash(Array(rowSelection))
             return .handled
         }
+        .onDrop(of: [.fileURL], delegate: FileDropDelegate(target: openFolderTarget, receive: receiveDrop))
+    }
+
+    private func rowDrop<Content: View>(
+        for entry: FileEntry,
+        dragFromCell: Bool = false,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .overlay {
+                if dragFromCell {
+                    FileDragSource(
+                        row: entry.url,
+                        selection: dragURLs(for: entry.url),
+                        onPrimaryClick: { flags in selectRow(entry.url, flags: flags) }
+                    )
+                }
+            }
+            .onDrop(
+                of: [.fileURL],
+                delegate: FileDropDelegate(
+                    target: entry.opensAsFolder ? .folder(entry.url) : .file,
+                    receive: receiveDrop
+                )
+            )
+    }
+
+    private var openFolderTarget: DropTargetKind {
+        guard let url = model.selectedURL else { return .missing }
+        return .folder(url)
+    }
+
+    private func dragURLs(for url: URL) -> [URL] {
+        if rowSelection.contains(url) {
+            return rowSelection.sorted { $0.path < $1.path }
+        }
+        return [url]
+    }
+
+    private func selectRow(_ url: URL, flags: NSEvent.ModifierFlags) {
+        if flags.contains(.command) {
+            if rowSelection.contains(url) {
+                rowSelection.remove(url)
+            } else {
+                rowSelection.insert(url)
+            }
+            return
+        }
+        if flags.contains(.shift) {
+            let order = rows.map(\.url)
+            let anchor = rowSelection.first ?? url
+            guard
+                let start = order.firstIndex(where: { Favorites.key(for: $0) == Favorites.key(for: anchor) }),
+                let end = order.firstIndex(where: { Favorites.key(for: $0) == Favorites.key(for: url) })
+            else {
+                rowSelection = [url]
+                return
+            }
+            rowSelection = Set(order[min(start, end)...max(start, end)])
+            return
+        }
+        rowSelection = [url]
     }
 
     private func nameCell(_ entry: FileEntry) -> some View {
@@ -119,7 +195,10 @@ struct FileListView: View {
                 RenameClickCatcher(
                     isSelected: rowSelection.contains(entry.url),
                     onSlowClick: { rename.begin(entry.url) },
-                    onDoubleClick: { open(entry) }
+                    onDoubleClick: { open(entry) },
+                    onPrimaryClick: { flags in selectRow(entry.url, flags: flags) },
+                    fileDragRow: entry.url,
+                    fileDragSelection: dragURLs(for: entry.url)
                 )
             }
         }
@@ -148,7 +227,11 @@ struct FileListView: View {
             },
             rename: actions.rename,
             moveToTrash: actions.moveToTrash,
-            newFolder: actions.newFolder
+            newFolder: actions.newFolder,
+            copyFiles: actions.copyFiles,
+            pasteFiles: actions.pasteFiles,
+            moveFiles: actions.moveFiles,
+            canPasteFiles: actions.canPasteFiles
         )
     }
 

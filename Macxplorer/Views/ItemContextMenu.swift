@@ -7,6 +7,10 @@ struct ItemActions {
     var rename: (URL) -> Void
     var moveToTrash: ([URL]) -> Void
     var newFolder: () -> Void
+    var copyFiles: ([URL]) -> Void
+    var pasteFiles: () -> Void
+    var moveFiles: () -> Void
+    var canPasteFiles: () -> Bool
 }
 
 struct FavoriteMenuItem {
@@ -74,6 +78,21 @@ struct ItemContextMenu: View {
         .disabled(urls.isEmpty)
 
         Divider()
+
+        Button("Copy") {
+            actions.copyFiles(urls.sorted { $0.path < $1.path })
+        }
+        .disabled(urls.isEmpty)
+
+        Button("Paste") {
+            actions.pasteFiles()
+        }
+        .disabled(!actions.canPasteFiles())
+
+        Button("Move Item Here") {
+            actions.moveFiles()
+        }
+        .disabled(!actions.canPasteFiles())
 
         Button("Copy Name") {
             PathClipboard.copyNames(urls: urls)

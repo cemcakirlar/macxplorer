@@ -14,18 +14,79 @@ struct ContentView: View {
     @State private var renameUndo = RenameUndoRelay()
     @State private var trashUndo = TrashUndoRelay()
     @State private var newFolderUndo = NewFolderUndoRelay()
+    @State private var transferUndo = TransferUndoRelay()
+    @State private var pasteboardToken = 0
+    @State private var isTransferring = false
     @Environment(\.undoManager) private var undoManager
 
     var body: some View {
+        columns
+            .focusedSceneValue(\.copyPathAction, copyPathAction)
+            .focusedSceneValue(\.newFolderAction, newFolderAction)
+            .focusedSceneValue(\.fileEditAction, fileEditAction)
+            .task {
+                await model.bootstrap()
+            }
+            .onAppear(perform: installUndo)
+            .onChange(of: model.selectedURL) { _, _ in
+                if model.consumeRenameNavigation() {
+                    return
+                }
+                listSelection = []
+                quickLookURL = nil
+            }
+            .onChange(of: listSelection) { _, newValue in
+                guard let quickLookURL else { return }
+                if newValue != Set([quickLookURL]) {
+                    self.quickLookURL = nil
+                }
+            }
+            .onChange(of: settings.showHidden) { _, show in
+                Task { await model.setShowHiddenInList(show) }
+            }
+            .onChange(of: settings.showHiddenInSidebar) { _, show in
+                Task { await model.setShowHiddenInSidebar(show) }
+            }
+            .onChange(of: rootLabelSignature) { _, _ in
+                model.applyRootLabels()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                pasteboardToken += 1
+            }
+            .alert(
+                actionAlert?.title ?? "",
+                isPresented: actionAlertIsPresented,
+                actions: { actionAlertButtons },
+                message: {
+                    Text(actionAlert?.message ?? "")
+                }
+            )
+            .alert(
+                extensionPrompt?.title ?? "",
+                isPresented: extensionPromptIsPresented,
+                actions: {
+                    let prompt = extensionPrompt
+                    Button(prompt?.keepButton ?? "Keep") {
+                        keepCurrentExtension(prompt)
+                    }
+                    Button(prompt?.useButton ?? "Use") {
+                        useProposedExtension()
+                    }
+                }
+            )
+    }
+
+    private var columns: some View {
         NavigationSplitView {
-            SidebarTreeView(model: model, actions: itemActions, rename: renameEditing)
+            SidebarTreeView(model: model, actions: itemActions, rename: renameEditing, receiveDrop: receiveDrop)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 480)
         } detail: {
             FileListView(
                 model: model,
                 rowSelection: $listSelection,
                 actions: itemActions,
-                rename: renameEditing
+                rename: renameEditing,
+                receiveDrop: receiveDrop
             )
             .navigationTitle(detailTitle)
         }
@@ -43,61 +104,30 @@ struct ContentView: View {
             pathToolbar
             actionToolbar
         }
-        .focusedSceneValue(\.copyPathAction, copyPathAction)
-        .focusedSceneValue(\.newFolderAction, newFolderAction)
-        .task {
-            await model.bootstrap()
-        }
-        .onAppear(perform: installUndo)
-        .onChange(of: model.selectedURL) { _, _ in
-            if model.consumeRenameNavigation() {
-                return
+    }
+
+    @ViewBuilder
+    private var actionAlertButtons: some View {
+        let kind = actionAlert?.kind
+        switch kind {
+        case .collision(let onChoice):
+            Button("Keep Both") {
+                onChoice(.keepBoth)
             }
-            listSelection = []
-            quickLookURL = nil
-        }
-        .onChange(of: listSelection) { _, newValue in
-            guard let quickLookURL else { return }
-            if newValue != Set([quickLookURL]) {
-                self.quickLookURL = nil
+            .keyboardShortcut(.defaultAction)
+            Button("Stop", role: .cancel) {
+                onChoice(.stop)
+            }
+            Button("Replace") {
+                onChoice(.replace)
+            }
+        default:
+            Button("OK", role: .cancel) {
+                guard renameSession != nil else { return }
+                renameAcceptsCommit = true
+                renameRefocusID += 1
             }
         }
-        .onChange(of: settings.showHidden) { _, show in
-            Task { await model.setShowHiddenInList(show) }
-        }
-        .onChange(of: settings.showHiddenInSidebar) { _, show in
-            Task { await model.setShowHiddenInSidebar(show) }
-        }
-        .onChange(of: rootLabelSignature) { _, _ in
-            model.applyRootLabels()
-        }
-        .alert(
-            actionAlert?.title ?? "",
-            isPresented: actionAlertIsPresented,
-            actions: {
-                Button("OK", role: .cancel) {
-                    guard renameSession != nil else { return }
-                    renameAcceptsCommit = true
-                    renameRefocusID += 1
-                }
-            },
-            message: {
-                Text(actionAlert?.message ?? "")
-            }
-        )
-        .alert(
-            extensionPrompt?.title ?? "",
-            isPresented: extensionPromptIsPresented,
-            actions: {
-                let prompt = extensionPrompt
-                Button(prompt?.keepButton ?? "Keep") {
-                    keepCurrentExtension(prompt)
-                }
-                Button(prompt?.useButton ?? "Use") {
-                    useProposedExtension()
-                }
-            }
-        )
     }
 
     @ToolbarContentBuilder
@@ -213,6 +243,21 @@ struct ContentView: View {
         }
     }
 
+    private var fileEditAction: FileEditAction {
+        FileEditAction(
+            textEditing: renameSession != nil,
+            canPasteFiles: canPasteFiles,
+            pasteFiles: { pasteFromClipboard(moving: false) },
+            moveFiles: { pasteFromClipboard(moving: true) },
+            notePasteboardChange: { pasteboardToken += 1 }
+        )
+    }
+
+    private var canPasteFiles: Bool {
+        _ = pasteboardToken
+        return !isTransferring && model.selectedURL != nil && FilePasteboard.hasFileURLs()
+    }
+
     private var copyPathURLs: [URL] {
         if !listSelection.isEmpty {
             return Array(listSelection)
@@ -235,7 +280,14 @@ struct ContentView: View {
             quickLook: quickLook,
             rename: beginRename,
             moveToTrash: moveToTrash,
-            newFolder: createNewFolder
+            newFolder: createNewFolder,
+            copyFiles: { urls in
+                FilePasteboard.write(urls)
+                pasteboardToken += 1
+            },
+            pasteFiles: { pasteFromClipboard(moving: false) },
+            moveFiles: { pasteFromClipboard(moving: true) },
+            canPasteFiles: { canPasteFiles }
         )
     }
 
@@ -347,6 +399,9 @@ struct ContentView: View {
         }
         newFolderUndo.undo = { url, identity in
             await undoNewFolder(url, identity: identity.value)
+        }
+        transferUndo.undo = { items in
+            await undoTransfer(items)
         }
     }
 
@@ -592,10 +647,311 @@ struct ContentView: View {
         let values = try? url.resourceValues(forKeys: [.fileResourceIdentifierKey])
         return values?.fileResourceIdentifier as? NSObject
     }
+
+    private func pasteFromClipboard(moving: Bool) {
+        guard renameSession == nil, !isTransferring, let destination = model.selectedURL else { return }
+        let sources = FilePasteboard.read()
+        guard !sources.isEmpty else { return }
+        isTransferring = true
+        Task {
+            await transfer(sources.map { PendingTransfer(url: $0, moving: moving) }, to: destination)
+            isTransferring = false
+        }
+    }
+
+    private func receiveDrop(_ urls: [URL], target: DropTargetKind, optionPressed: Bool) {
+        guard !isTransferring, case .folder(let destination) = target else { return }
+        let items = urls.compactMap { url -> PendingTransfer? in
+            let sameVolume = FileTransfer.Operations.live.sameVolume(url, destination)
+            switch DropDecision.item(source: url, target: target, sameVolume: sameVolume, optionPressed: optionPressed) {
+            case .refuse:
+                return nil
+            case .copy:
+                return PendingTransfer(url: url, moving: false)
+            case .move:
+                return PendingTransfer(url: url, moving: true)
+            }
+        }
+        guard !items.isEmpty else { return }
+        isTransferring = true
+        Task {
+            await transfer(items, to: destination)
+            isTransferring = false
+        }
+    }
+
+    private func transfer(_ items: [PendingTransfer], to destination: URL) async {
+        let caseSensitive = (try? destination.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]).volumeSupportsCaseSensitiveNames) == true
+        var pending = items
+        var choice: TransferChoice?
+        var records: [TransferUndoItem] = []
+        var failures: [String] = []
+
+        while let item = pending.first {
+            pending.removeFirst()
+            let source = item.url
+            let moving = item.moving
+            let name = source.lastPathComponent
+            if !transferItemExists(source) {
+                failures.append("“\(name)” can’t be found.")
+                continue
+            }
+            if TransferNames.destinationIsInside(source, destinationDirectory: destination) {
+                failures.append("“\(name)” can’t be copied into itself.")
+                continue
+            }
+            let proposed = transferDestination(for: source, name: name, in: destination)
+            if TransferNames.sameItem(source, proposed, caseSensitive: caseSensitive) {
+                if moving {
+                    continue
+                }
+                let unique = TransferNames.keepBothName(
+                    for: name,
+                    existing: siblingNames(in: destination),
+                    caseSensitive: caseSensitive
+                )
+                await writeTransfer(
+                    from: source,
+                    to: transferDestination(for: source, name: unique, in: destination),
+                    moving: false,
+                    replacing: false,
+                    records: &records,
+                    failures: &failures
+                )
+                continue
+            }
+            switch TransferNames.decision(
+                name: name,
+                existing: siblingNames(in: destination),
+                caseSensitive: caseSensitive,
+                choice: choice
+            ) {
+            case .stop:
+                pending = []
+            case .ask:
+                let picked = await askTransferChoice(name: name, moving: moving, appliesToRest: !pending.isEmpty)
+                choice = picked
+                if picked == .stop {
+                    pending = []
+                } else {
+                    pending.insert(item, at: 0)
+                }
+            case .write(let destinationName):
+                await writeTransfer(
+                    from: source,
+                    to: transferDestination(for: source, name: destinationName, in: destination),
+                    moving: moving,
+                    replacing: false,
+                    records: &records,
+                    failures: &failures
+                )
+            case .replace(let destinationName):
+                await writeTransfer(
+                    from: source,
+                    to: transferDestination(for: source, name: destinationName, in: destination),
+                    moving: moving,
+                    replacing: true,
+                    records: &records,
+                    failures: &failures
+                )
+            }
+        }
+
+        if !records.isEmpty {
+            installUndo()
+            transferUndo.register(
+                undoManager: undoManager,
+                items: records,
+                actionName: items.allSatisfy(\.moving) ? "Move" : "Copy"
+            )
+            let listed = await model.refreshedEntries(matching: records.map(\.write.url))
+            listSelection = Set(listed.isEmpty ? records.map(\.write.url) : listed)
+            appLogger.info("Transferred \(records.count, privacy: .public) item(s) into \(destination.path, privacy: .public)")
+        }
+        if !failures.isEmpty {
+            actionAlert = ActionAlert(
+                title: items.allSatisfy(\.moving) ? "Can't Move" : "Can't Copy",
+                message: failures.joined(separator: "\n")
+            )
+        }
+    }
+
+    private func writeTransfer(
+        from source: URL,
+        to destination: URL,
+        moving: Bool,
+        replacing: Bool,
+        records: inout [TransferUndoItem],
+        failures: inout [String]
+    ) async {
+        do {
+            let write = try await Task.detached {
+                try FileTransfer.perform(from: source, to: destination, moving: moving, replacing: replacing)
+            }.value
+            records.append(TransferUndoItem(write: write, identity: CreatedFolderIdentity(folderIdentity(write.url))))
+        } catch let error as FileTransferError {
+            switch error {
+            case .copiedButSourceRemained(let write):
+                records.append(TransferUndoItem(write: write, identity: CreatedFolderIdentity(folderIdentity(write.url))))
+                failures.append("“\(source.lastPathComponent)” was copied, but the original couldn’t be moved to the Trash.")
+            case .nameTaken(let name):
+                failures.append("The name “\(name)” is already taken.")
+            case .trashFailed(let name):
+                failures.append("“\(name)” couldn’t be moved to the Trash, so it was left in place.")
+            case .insideItself(let name):
+                failures.append("“\(name)” can’t be copied into itself.")
+            }
+        } catch {
+            failures.append(error.localizedDescription)
+            appLogger.info("Failed to transfer \(source.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func askTransferChoice(name: String, moving: Bool, appliesToRest: Bool) async -> TransferChoice {
+        let verb = moving ? "moving" : "copying"
+        var message = "Do you want to replace it with the one you're \(verb)?"
+        if appliesToRest {
+            message += " This choice applies to the remaining items."
+        }
+        let gate = TransferChoiceGate()
+        return await withCheckedContinuation { continuation in
+            actionAlert = ActionAlert(
+                title: "“\(name)” already exists in this location.",
+                message: message,
+                kind: .collision(onChoice: { choice in
+                    gate.resume(continuation, with: choice)
+                })
+            )
+        }
+    }
+
+    private func siblingNames(in folder: URL) -> [String] {
+        (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+    }
+
+    private func transferItemExists(_ url: URL) -> Bool {
+        if FileManager.default.fileExists(atPath: url.path) {
+            return true
+        }
+        return (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true
+    }
+
+    private func transferDestination(for source: URL, name: String, in parent: URL) -> URL {
+        let values = try? source.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey])
+        let isDirectory = values?.isSymbolicLink != true && values?.isDirectory == true
+        return parent.appendingPathComponent(name, isDirectory: isDirectory)
+    }
+
+    private func undoTransfer(_ items: [TransferUndoItem]) async -> [TransferUndoItem] {
+        if let session = renameSession, items.contains(where: { Favorites.key(for: $0.write.url) == Favorites.key(for: session.url) }) {
+            renameSession = nil
+        }
+        var remaining: [TransferUndoItem] = []
+        var messages: [String] = []
+        for item in items.reversed() {
+            if let message = await undoTransferItem(item) {
+                messages.append(message)
+                remaining.append(item)
+            }
+        }
+        await model.refresh()
+        if !messages.isEmpty {
+            actionAlert = ActionAlert(title: "Can't Undo", message: messages.joined(separator: "\n"))
+        }
+        return remaining
+    }
+
+    private func undoTransferItem(_ item: TransferUndoItem) async -> String? {
+        let write = item.write
+        let occupiesDestination = stillTheCreatedFolder(write.url, identity: item.identity.value)
+        if let movedFrom = write.movedFrom {
+            if occupiesDestination {
+                if FileManager.default.fileExists(atPath: movedFrom.path) {
+                    return "The name “\(movedFrom.lastPathComponent)” is already taken. The item stayed where it is."
+                }
+                do {
+                    _ = try await Task.detached {
+                        try FileTransfer.perform(from: write.url, to: movedFrom, moving: true, replacing: false)
+                    }.value
+                } catch {
+                    return error.localizedDescription
+                }
+            }
+            return await restoreDisplaced(write.displaced)
+        }
+        if let source = write.crossVolumeSource {
+            if FileManager.default.fileExists(atPath: source.original.path) {
+                return "The name “\(source.original.lastPathComponent)” is already taken. The item stayed where it is."
+            }
+            do {
+                try await Task.detached {
+                    try FileTrash.putBack(trashed: source.trashed, to: source.original)
+                }.value
+            } catch {
+                return error.localizedDescription
+            }
+            if occupiesDestination {
+                do {
+                    _ = try await Task.detached {
+                        try FileTrash.trash(at: write.url)
+                    }.value
+                } catch {
+                    return error.localizedDescription
+                }
+            }
+            return await restoreDisplaced(write.displaced)
+        }
+        if occupiesDestination {
+            do {
+                _ = try await Task.detached {
+                    try FileTrash.trash(at: write.url)
+                }.value
+            } catch {
+                return error.localizedDescription
+            }
+        }
+        return await restoreDisplaced(write.displaced)
+    }
+
+    private func restoreDisplaced(_ item: TrashedItem?) async -> String? {
+        guard let item else { return nil }
+        if FileManager.default.fileExists(atPath: item.original.path) {
+            return "The name “\(item.original.lastPathComponent)” is already taken. The earlier item stayed in the Trash."
+        }
+        do {
+            try await Task.detached {
+                try FileTrash.putBack(trashed: item.trashed, to: item.original)
+            }.value
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+}
+
+private struct PendingTransfer: Sendable {
+    var url: URL
+    var moving: Bool
 }
 
 struct ActionAlert: Identifiable {
+    enum Kind {
+        case acknowledge
+        case collision(onChoice: (TransferChoice) -> Void)
+    }
+
     let id = UUID()
     var title: String
     var message: String
+    var kind: Kind = .acknowledge
+}
+
+private final class TransferChoiceGate: @unchecked Sendable {
+    private var resumed = false
+
+    func resume(_ continuation: CheckedContinuation<TransferChoice, Never>, with choice: TransferChoice) {
+        guard !resumed else { return }
+        resumed = true
+        continuation.resume(returning: choice)
+    }
 }
