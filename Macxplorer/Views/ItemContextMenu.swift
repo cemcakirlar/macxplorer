@@ -6,11 +6,6 @@ struct ItemActions {
     var quickLook: (URL) -> Void
     var rename: (URL) -> Void
     var moveToTrash: ([URL]) -> Void
-    var newFolder: () -> Void
-    var copyFiles: ([URL]) -> Void
-    var pasteFiles: () -> Void
-    var moveFiles: () -> Void
-    var canPasteFiles: () -> Bool
 }
 
 struct FavoriteMenuItem {
@@ -25,8 +20,6 @@ struct ItemContextMenu: View {
     var favorite: FavoriteMenuItem?
     /// A favorite whose folder is gone keeps Copy Path, disabled Rename and Move to Trash, and the favorite item.
     var targetIsMissing = false
-    /// New Folder writes to the open folder, so an empty selection still enables it.
-    var canCreateFolder = false
 
     var body: some View {
         if targetIsMissing {
@@ -60,11 +53,6 @@ struct ItemContextMenu: View {
         }
         .disabled(urls.isEmpty)
 
-        Button("New Folder") {
-            actions.newFolder()
-        }
-        .disabled(!canCreateFolder)
-
         Button("Rename") {
             if let url = urls.first {
                 actions.rename(url)
@@ -78,21 +66,6 @@ struct ItemContextMenu: View {
         .disabled(urls.isEmpty)
 
         Divider()
-
-        Button("Copy") {
-            actions.copyFiles(urls.sorted { $0.path < $1.path })
-        }
-        .disabled(urls.isEmpty)
-
-        Button("Paste") {
-            actions.pasteFiles()
-        }
-        .disabled(!actions.canPasteFiles())
-
-        Button("Move Item Here") {
-            actions.moveFiles()
-        }
-        .disabled(!actions.canPasteFiles())
 
         Button("Copy Name") {
             PathClipboard.copyNames(urls: urls)

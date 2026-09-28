@@ -87,8 +87,7 @@ struct SidebarTreeView: View {
                 opensAsFolder: { _ in true },
                 actions: actions,
                 favorite: FavoriteMenuItem(action: .remove(favoritePaths), perform: model.applyFavorites),
-                targetIsMissing: !favoritePaths.allSatisfy(model.favoriteIsAvailable),
-                canCreateFolder: model.selectedURL != nil
+                targetIsMissing: !favoritePaths.allSatisfy(model.favoriteIsAvailable)
             )
         } else {
             let urls = items.compactMap { item -> URL? in
@@ -101,8 +100,7 @@ struct SidebarTreeView: View {
                 actions: actions,
                 favorite: model.favoriteMenuAction(for: urls).map {
                     FavoriteMenuItem(action: $0, perform: model.applyFavorites)
-                },
-                canCreateFolder: model.selectedURL != nil
+                }
             )
         }
     }

@@ -17,6 +17,14 @@ enum TransferDecision: Equatable, Sendable {
     case stop
 }
 
+enum TransferStep: Equatable, Sendable {
+    /// The item is already in the destination and this is a move.
+    case skip
+    case stop
+    case ask(String)
+    case write(String, replacing: Bool)
+}
+
 enum TransferNames {
     static func keepBothName(for name: String, existing: [String], caseSensitive: Bool) -> String {
         let parts = stemAndExtension(name)
@@ -54,6 +62,36 @@ enum TransferNames {
             return .write(keepBothName(for: name, existing: existing, caseSensitive: caseSensitive))
         case .replace:
             return .replace(name)
+        }
+    }
+
+    /// A move of an item onto itself does nothing. A copy of that item uses `decision`,
+    /// so Stop writes nothing further and Keep Both picks a new name.
+    static func step(
+        source: URL,
+        proposed: URL,
+        moving: Bool,
+        existing: [String],
+        caseSensitive: Bool,
+        choice: TransferChoice?
+    ) -> TransferStep {
+        if moving, sameItem(source, proposed, caseSensitive: caseSensitive) {
+            return .skip
+        }
+        switch decision(
+            name: proposed.lastPathComponent,
+            existing: existing,
+            caseSensitive: caseSensitive,
+            choice: choice
+        ) {
+        case .stop:
+            return .stop
+        case .ask(let name):
+            return .ask(name)
+        case .write(let name):
+            return .write(name, replacing: false)
+        case .replace(let name):
+            return .write(name, replacing: true)
         }
     }
 

@@ -128,6 +128,66 @@ final class FileTransferTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: existing), Data("keep".utf8))
     }
 
+    func testReplaceRestoresTheOccupantWhenTheWriteFails() throws {
+        let folder = otherFolder()
+        let existing = folder.appendingPathComponent("note.txt")
+        try Data("old".utf8).write(to: existing)
+        let source = try file("fresh.txt", bytes: "new")
+        var operations = FileTransfer.Operations.live
+        operations.copy = { _, _ in
+            throw CocoaError(.fileWriteUnknown)
+        }
+
+        XCTAssertThrowsError(
+            try FileTransfer.perform(from: source, to: existing, moving: false, replacing: true, operations: operations)
+        ) { error in
+            XCTAssertFalse(error is FileTransferError)
+        }
+        XCTAssertEqual(try Data(contentsOf: existing), Data("old".utf8))
+        XCTAssertEqual(try Data(contentsOf: source), Data("new".utf8))
+    }
+
+    func testReplaceLeavesTheOccupantInTheTrashWhenPutBackFails() throws {
+        let folder = otherFolder()
+        let existing = folder.appendingPathComponent("note.txt")
+        try Data("old".utf8).write(to: existing)
+        let source = try file("fresh.txt", bytes: "new")
+        let holding = root.appendingPathComponent("holding", isDirectory: true)
+        try FileManager.default.createDirectory(at: holding, withIntermediateDirectories: true)
+        var operations = FileTransfer.Operations.live
+        operations.trash = { url in
+            let trashed = holding.appendingPathComponent(url.lastPathComponent)
+            try FileManager.default.moveItem(at: url, to: trashed)
+            return trashed
+        }
+        operations.copy = { _, _ in
+            throw CocoaError(.fileWriteUnknown)
+        }
+        operations.move = { _, _ in
+            throw CocoaError(.fileWriteUnknown)
+        }
+
+        XCTAssertThrowsError(
+            try FileTransfer.perform(from: source, to: existing, moving: false, replacing: true, operations: operations)
+        ) { error in
+            XCTAssertEqual(error as? FileTransferError, .occupantLeftInTrash("note.txt"))
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: existing.path))
+        XCTAssertEqual(try Data(contentsOf: holding.appendingPathComponent("note.txt")), Data("old".utf8))
+        XCTAssertEqual(try Data(contentsOf: source), Data("new".utf8))
+    }
+
+    func testReplaceRefusesToTrashTheSourceItself() throws {
+        let source = try file("note.txt", bytes: "keep")
+
+        XCTAssertThrowsError(
+            try FileTransfer.perform(from: source, to: source, moving: false, replacing: true)
+        ) { error in
+            XCTAssertEqual(error as? FileTransferError, .sameItem("note.txt"))
+        }
+        XCTAssertEqual(try Data(contentsOf: source), Data("keep".utf8))
+    }
+
     func testCopyDoesNotOverwriteATakenName() throws {
         let folder = otherFolder()
         let existing = folder.appendingPathComponent("note.txt")

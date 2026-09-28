@@ -93,6 +93,58 @@ final class TransferNamesTests: XCTestCase {
         )
     }
 
+    func testCopyingAnItemOntoItselfAsksAndStopWritesNothing() {
+        let file = URL(fileURLWithPath: "/Users/a/Notlar.txt")
+        XCTAssertEqual(
+            TransferNames.step(
+                source: file,
+                proposed: file,
+                moving: false,
+                existing: ["Notlar.txt"],
+                caseSensitive: false,
+                choice: nil
+            ),
+            .ask("Notlar.txt")
+        )
+        XCTAssertEqual(
+            TransferNames.step(
+                source: file,
+                proposed: file,
+                moving: false,
+                existing: ["Notlar.txt"],
+                caseSensitive: false,
+                choice: .stop
+            ),
+            .stop
+        )
+        XCTAssertEqual(
+            TransferNames.step(
+                source: file,
+                proposed: file,
+                moving: false,
+                existing: ["Notlar.txt"],
+                caseSensitive: false,
+                choice: .keepBoth
+            ),
+            .write("Notlar copy.txt", replacing: false)
+        )
+    }
+
+    func testMovingAnItemOntoItselfDoesNothing() {
+        let file = URL(fileURLWithPath: "/Users/a/Notlar.txt")
+        XCTAssertEqual(
+            TransferNames.step(
+                source: file,
+                proposed: file,
+                moving: true,
+                existing: ["Notlar.txt"],
+                caseSensitive: false,
+                choice: nil
+            ),
+            .skip
+        )
+    }
+
     func testDestinationInsideTheSourceIsRefused() {
         let source = URL(fileURLWithPath: "/Users/a/Folder", isDirectory: true)
         XCTAssertTrue(

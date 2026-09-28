@@ -14,6 +14,10 @@ enum FileTransferError: Error, Equatable, Sendable {
     case nameTaken(String)
     case trashFailed(String)
     case insideItself(String)
+    /// Replace would trash the source that is also the destination.
+    case sameItem(String)
+    /// Replace trashed the occupant, then the write and the put-back both failed.
+    case occupantLeftInTrash(String)
     /// The copy is at `write.url`. The source is still in place.
     case copiedButSourceRemained(TransferWrite)
 }
@@ -60,6 +64,9 @@ enum FileTransfer {
         operations: Operations = .live
     ) throws -> TransferWrite {
         let parent = destination.deletingLastPathComponent()
+        if replacing, sameItem(source, destination) {
+            throw FileTransferError.sameItem(destination.lastPathComponent)
+        }
         if TransferNames.destinationIsInside(source, destinationDirectory: parent) {
             throw FileTransferError.insideItself(source.lastPathComponent)
         }
@@ -148,14 +155,18 @@ enum FileTransfer {
                 return TransferWrite(url: destination, movedFrom: source, displaced: displaced)
             }
             try operations.copy(sourceURL, target)
-        } catch {
+        } catch let writeError {
             if let displaced {
-                try? operations.move(displaced.trashed, target)
+                do {
+                    try operations.move(displaced.trashed, target)
+                } catch {
+                    throw FileTransferError.occupantLeftInTrash(destination.lastPathComponent)
+                }
             }
             if operations.exists(target) && displaced == nil {
                 throw FileTransferError.nameTaken(destination.lastPathComponent)
             }
-            throw error
+            throw writeError
         }
         guard moving, !sameVolume else {
             return TransferWrite(url: destination, displaced: displaced)
@@ -172,6 +183,11 @@ enum FileTransfer {
                 TransferWrite(url: destination, displaced: displaced)
             )
         }
+    }
+
+    private static func sameItem(_ source: URL, _ destination: URL) -> Bool {
+        let caseSensitive = (try? destination.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]).volumeSupportsCaseSensitiveNames) == true
+        return TransferNames.sameItem(source, destination, caseSensitive: caseSensitive)
     }
 
     private static func volumesMatch(_ source: URL, _ destination: URL) -> Bool {

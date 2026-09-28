@@ -223,24 +223,38 @@ final class RenameClickView: NSView, NSDraggingSource {
 }
 
 @MainActor
+enum MainActorUndo {
+    static func register<Target: AnyObject>(
+        undoManager: UndoManager?,
+        actionName: String,
+        target: Target,
+        handler: @escaping @MainActor (Target) async -> Void
+    ) {
+        guard let undoManager else { return }
+        undoManager.registerUndo(withTarget: target) { target in
+            Task { @MainActor in
+                await handler(target)
+            }
+        }
+        undoManager.setActionName(actionName)
+    }
+}
+
+@MainActor
 final class RenameUndoRelay {
     var perform: ((URL, String) async -> Bool)?
 
     func register(undoManager: UndoManager?, from oldURL: URL, to newURL: URL) {
-        guard let undoManager else { return }
-        undoManager.registerUndo(withTarget: self) { relay in
+        MainActorUndo.register(undoManager: undoManager, actionName: "Rename", target: self) { relay in
             let previousName = oldURL.lastPathComponent
             let currentURL = newURL
-            Task { @MainActor in
-                let succeeded = await relay.perform?(currentURL, previousName) ?? false
-                if succeeded {
-                    relay.register(undoManager: undoManager, from: currentURL, to: oldURL)
-                } else {
-                    relay.register(undoManager: undoManager, from: oldURL, to: newURL)
-                }
+            let succeeded = await relay.perform?(currentURL, previousName) ?? false
+            if succeeded {
+                relay.register(undoManager: undoManager, from: currentURL, to: oldURL)
+            } else {
+                relay.register(undoManager: undoManager, from: oldURL, to: newURL)
             }
         }
-        undoManager.setActionName("Rename")
     }
 }
 
@@ -256,17 +270,13 @@ final class TrashUndoRelay {
     var putBack: (([TrashedItem]) async -> [TrashedItem])?
 
     func register(undoManager: UndoManager?, items: [TrashedItem]) {
-        guard let undoManager, !items.isEmpty else { return }
-        undoManager.registerUndo(withTarget: self) { relay in
-            let pending = items
-            Task { @MainActor in
-                let remaining = await relay.putBack?(pending) ?? pending
-                if !remaining.isEmpty {
-                    relay.register(undoManager: undoManager, items: remaining)
-                }
+        guard !items.isEmpty else { return }
+        MainActorUndo.register(undoManager: undoManager, actionName: "Move to Trash", target: self) { relay in
+            let remaining = await relay.putBack?(items) ?? items
+            if !remaining.isEmpty {
+                relay.register(undoManager: undoManager, items: remaining)
             }
         }
-        undoManager.setActionName("Move to Trash")
     }
 }
 
@@ -275,15 +285,9 @@ final class NewFolderUndoRelay {
     var undo: ((URL, CreatedFolderIdentity) async -> Void)?
 
     func register(undoManager: UndoManager?, folder: URL, identity: CreatedFolderIdentity) {
-        guard let undoManager else { return }
-        undoManager.registerUndo(withTarget: self) { relay in
-            let created = folder
-            let createdIdentity = identity
-            Task { @MainActor in
-                await relay.undo?(created, createdIdentity)
-            }
+        MainActorUndo.register(undoManager: undoManager, actionName: "New Folder", target: self) { relay in
+            await relay.undo?(folder, identity)
         }
-        undoManager.setActionName("New Folder")
     }
 }
 
@@ -305,17 +309,12 @@ final class TransferUndoRelay {
     var undo: (([TransferUndoItem]) async -> [TransferUndoItem])?
 
     func register(undoManager: UndoManager?, items: [TransferUndoItem], actionName: String) {
-        guard let undoManager, !items.isEmpty else { return }
-        undoManager.registerUndo(withTarget: self) { relay in
-            let pending = items
-            let name = actionName
-            Task { @MainActor in
-                let remaining = await relay.undo?(pending) ?? pending
-                if !remaining.isEmpty {
-                    relay.register(undoManager: undoManager, items: remaining, actionName: name)
-                }
+        guard !items.isEmpty else { return }
+        MainActorUndo.register(undoManager: undoManager, actionName: actionName, target: self) { relay in
+            let remaining = await relay.undo?(items) ?? items
+            if !remaining.isEmpty {
+                relay.register(undoManager: undoManager, items: remaining, actionName: actionName)
             }
         }
-        undoManager.setActionName(actionName)
     }
 }
