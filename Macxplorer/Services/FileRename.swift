@@ -35,25 +35,6 @@ enum FileRename {
         return try result.get()
     }
 
-    /// Renames by moving aside and back. If the second move fails, the first move is reversed.
-    static func moveChangingCase(at url: URL, to newName: String, moves: Move = .live) throws -> URL {
-        let parent = url.deletingLastPathComponent()
-        let temporary = parent.appendingPathComponent(".macxplorer-rename-\(UUID().uuidString)")
-        let destination = parent.appendingPathComponent(newName, isDirectory: url.hasDirectoryPath)
-        try moves.perform(url, temporary)
-        do {
-            try moves.perform(temporary, destination)
-            return destination
-        } catch {
-            do {
-                try moves.perform(temporary, url)
-            } catch {
-                throw error
-            }
-            throw error
-        }
-    }
-
     private static func renameCoordinated(_ writingURL: URL, to newName: String, moves: Move) throws -> URL {
         let destination = writingURL
             .deletingLastPathComponent()
@@ -66,6 +47,10 @@ enum FileRename {
                 try moves.perform(writingURL, destination)
                 return destination
             }
+            if isCaseOnlyRename(from: writingURL.lastPathComponent, to: newName) {
+                try moves.perform(writingURL, destination)
+                return destination
+            }
             var mutable = writingURL
             var values = URLResourceValues()
             values.name = newName
@@ -74,9 +59,6 @@ enum FileRename {
         } catch let error as FileRenameError {
             throw error
         } catch {
-            if isCaseOnlyRename(from: writingURL.lastPathComponent, to: newName) {
-                return try moveChangingCase(at: writingURL, to: newName, moves: moves)
-            }
             if isExistingItem(error) {
                 throw FileRenameError.nameTaken(newName)
             }

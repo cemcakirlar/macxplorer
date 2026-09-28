@@ -82,25 +82,30 @@ final class FileRenameTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("DocsAliasRenamed").path))
     }
 
-    func testCaseRenameRestoresOriginalWhenSecondMoveFails() throws {
+    func testCaseOnlyRenameLeavesTheOriginalWhenTheMoveFails() throws {
         let file = root.appendingPathComponent("Report")
         try Data("body".utf8).write(to: file)
-        let calls = CallCount()
-        let moves = FileRename.Move { source, destination in
-            calls.value += 1
-            if calls.value == 2 {
-                throw CocoaError(.fileWriteUnknown)
-            }
-            try FileManager.default.moveItem(at: source, to: destination)
+        let moves = FileRename.Move { _, _ in
+            throw CocoaError(.fileWriteUnknown)
         }
 
-        XCTAssertThrowsError(try FileRename.moveChangingCase(at: file, to: "report", moves: moves))
+        XCTAssertThrowsError(try FileRename.apply(at: file, to: "report", moves: moves))
         XCTAssertEqual(try Data(contentsOf: file), Data("body".utf8))
         let names = try FileManager.default.contentsOfDirectory(atPath: root.path)
         XCTAssertEqual(names, ["Report"])
+        XCTAssertFalse(names.contains { $0.hasPrefix(".macxplorer-rename-") })
     }
-}
 
-private final class CallCount: @unchecked Sendable {
-    var value = 0
+    func testCaseOnlyRenameChangesTheNameInOneMove() throws {
+        let file = root.appendingPathComponent("Report")
+        try Data("body".utf8).write(to: file)
+
+        let renamed = try FileRename.apply(at: file, to: "report")
+
+        XCTAssertEqual(renamed.lastPathComponent, "report")
+        XCTAssertEqual(try Data(contentsOf: renamed), Data("body".utf8))
+        let names = try FileManager.default.contentsOfDirectory(atPath: root.path)
+        XCTAssertEqual(names, ["report"])
+        XCTAssertFalse(names.contains { $0.hasPrefix(".macxplorer-rename-") })
+    }
 }
