@@ -6,15 +6,26 @@ struct ContentView: View {
     @State private var model = BrowserModel()
     @State private var listSelection = Set<URL>()
     @State private var quickLookURL: URL?
-    @State private var actionError: String?
+    @State private var actionAlert: ActionAlert?
+    @State private var renameSession: RenameSession?
+    @State private var extensionPrompt: RenameExtensionPrompt?
+    @State private var renameRefocusID = 0
+    @State private var renameAcceptsCommit = false
+    @State private var renameUndo = RenameUndoRelay()
+    @Environment(\.undoManager) private var undoManager
 
     var body: some View {
         NavigationSplitView {
-            SidebarTreeView(model: model, actions: itemActions)
+            SidebarTreeView(model: model, actions: itemActions, rename: renameEditing)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 480)
         } detail: {
-            FileListView(model: model, rowSelection: $listSelection, actions: itemActions)
-                .navigationTitle(detailTitle)
+            FileListView(
+                model: model,
+                rowSelection: $listSelection,
+                actions: itemActions,
+                rename: renameEditing
+            )
+            .navigationTitle(detailTitle)
         }
         .inspector(isPresented: $settings.showPreview) {
             PreviewInspector(
@@ -34,7 +45,11 @@ struct ContentView: View {
         .task {
             await model.bootstrap()
         }
+        .onAppear(perform: installUndo)
         .onChange(of: model.selectedURL) { _, _ in
+            if model.consumeRenameNavigation() {
+                return
+            }
             listSelection = []
             quickLookURL = nil
         }
@@ -54,13 +69,30 @@ struct ContentView: View {
             model.applyRootLabels()
         }
         .alert(
-            "Can't Open Terminal",
-            isPresented: actionErrorIsPresented,
+            actionAlert?.title ?? "",
+            isPresented: actionAlertIsPresented,
             actions: {
-                Button("OK", role: .cancel) {}
+                Button("OK", role: .cancel) {
+                    guard renameSession != nil else { return }
+                    renameAcceptsCommit = true
+                    renameRefocusID += 1
+                }
             },
             message: {
-                Text(actionError ?? "")
+                Text(actionAlert?.message ?? "")
+            }
+        )
+        .alert(
+            extensionPrompt?.title ?? "",
+            isPresented: extensionPromptIsPresented,
+            actions: {
+                let prompt = extensionPrompt
+                Button(prompt?.keepButton ?? "Keep") {
+                    keepCurrentExtension(prompt)
+                }
+                Button(prompt?.useButton ?? "Use") {
+                    useProposedExtension()
+                }
             }
         )
     }
@@ -191,7 +223,8 @@ struct ContentView: View {
         ItemActions(
             revealInFinder: revealInFinder,
             openInTerminal: openInTerminal(directories:),
-            quickLook: quickLook
+            quickLook: quickLook,
+            rename: beginRename
         )
     }
 
@@ -215,12 +248,26 @@ struct ContentView: View {
         }
     }
 
-    private var actionErrorIsPresented: Binding<Bool> {
+    private var actionAlertIsPresented: Binding<Bool> {
         Binding(
-            get: { actionError != nil },
+            get: { actionAlert != nil },
             set: { isPresented in
                 if !isPresented {
-                    actionError = nil
+                    actionAlert = nil
+                }
+            }
+        )
+    }
+
+    private var extensionPromptIsPresented: Binding<Bool> {
+        Binding(
+            get: { extensionPrompt != nil },
+            set: { isPresented in
+                if !isPresented {
+                    if extensionPrompt != nil, renameSession != nil {
+                        renameAcceptsCommit = true
+                    }
+                    extensionPrompt = nil
                 }
             }
         )
@@ -244,7 +291,10 @@ struct ContentView: View {
                 let message = error.localizedDescription
                 appLogger.info("Failed to open Terminal: \(message, privacy: .public)")
                 Task { @MainActor in
-                    actionError = message
+                    actionAlert = ActionAlert(
+                        title: "Can't Open Terminal",
+                        message: message
+                    )
                 }
             } else {
                 let path = directories.map(\.path).joined(separator: ", ")
@@ -252,4 +302,152 @@ struct ContentView: View {
             }
         }
     }
+
+    private var renameEditing: RenameEditing {
+        RenameEditing(
+            session: renameSession,
+            draft: renameDraft,
+            refocusID: renameRefocusID,
+            commit: commitRename,
+            cancel: cancelRename,
+            begin: beginRename
+        )
+    }
+
+    private var renameDraft: Binding<String> {
+        Binding(
+            get: { renameSession?.draft ?? "" },
+            set: { newValue in
+                let filtered = RenameName.filtering(newValue)
+                if renameSession?.draft != filtered {
+                    renameAcceptsCommit = true
+                }
+                renameSession?.draft = filtered
+            }
+        )
+    }
+
+    private func installUndo() {
+        renameUndo.perform = { url, newName in
+            await performRename(of: url, to: newName, registersUndo: false)
+        }
+    }
+
+    private func beginRename(_ url: URL) {
+        guard renameSession == nil else { return }
+        let isFolder: Bool
+        if let entry = model.entries.first(where: { $0.url.path == url.path }) {
+            isFolder = entry.opensAsFolder
+        } else {
+            isFolder = true
+        }
+        let resolved = isFolder ? url.directoryKey : url
+        renameAcceptsCommit = true
+        renameSession = RenameSession(
+            url: resolved,
+            isFolder: isFolder,
+            draft: resolved.lastPathComponent
+        )
+    }
+
+    private func cancelRename() {
+        renameAcceptsCommit = false
+        extensionPrompt = nil
+        renameSession = nil
+    }
+
+    private func commitRename() {
+        guard renameAcceptsCommit, let session = renameSession else { return }
+        renameAcceptsCommit = false
+        let decision = RenameName.decision(
+            currentName: session.url.lastPathComponent,
+            proposedName: session.draft,
+            isFolder: session.isFolder,
+            siblingNames: siblingNames(for: session.url),
+            caseSensitive: volumeIsCaseSensitive(session.url),
+            extensionChangeConfirmed: session.extensionChangeConfirmed
+        )
+        switch decision {
+        case .cancel:
+            renameSession = nil
+        case .rejected(let rejection):
+            actionAlert = ActionAlert(title: rejection.title, message: rejection.message)
+        case .confirmExtension(let from, let to):
+            extensionPrompt = RenameExtensionPrompt(from: from, to: to)
+        case .commit(let name):
+            let url = session.url
+            Task {
+                let succeeded = await performRename(of: url, to: name, registersUndo: true)
+                if succeeded {
+                    renameSession = nil
+                } else {
+                    renameAcceptsCommit = true
+                    renameRefocusID += 1
+                }
+            }
+        }
+    }
+
+    private func keepCurrentExtension(_ prompt: RenameExtensionPrompt?) {
+        guard var session = renameSession, let prompt else { return }
+        session.draft = RenameName.nameByRestoringExtension(session.draft, extension: prompt.from)
+        session.extensionChangeConfirmed = true
+        renameSession = session
+        extensionPrompt = nil
+        renameAcceptsCommit = true
+        commitRename()
+    }
+
+    private func useProposedExtension() {
+        guard var session = renameSession else { return }
+        session.extensionChangeConfirmed = true
+        renameSession = session
+        extensionPrompt = nil
+        renameAcceptsCommit = true
+        commitRename()
+    }
+
+    private func performRename(of url: URL, to newName: String, registersUndo: Bool) async -> Bool {
+        installUndo()
+        do {
+            let newURL = try await Task.detached {
+                try FileRename.apply(at: url, to: newName)
+            }.value
+            listSelection = Set(listSelection.map { RenamedPath.url($0, from: url, to: newURL) })
+            if let quickLookURL {
+                self.quickLookURL = RenamedPath.url(quickLookURL, from: url, to: newURL)
+            }
+            await model.applyRenamedItem(from: url, to: newURL)
+            if registersUndo {
+                renameUndo.register(undoManager: undoManager, from: url, to: newURL)
+            }
+            appLogger.info("Renamed \(url.path, privacy: .public) to \(newURL.path, privacy: .public)")
+            return true
+        } catch let error as FileRenameError {
+            if case .nameTaken(let name) = error {
+                let rejection = RenameRejection.nameTaken(name)
+                actionAlert = ActionAlert(title: rejection.title, message: rejection.message)
+            }
+            return false
+        } catch {
+            actionAlert = ActionAlert(title: "Can't Rename", message: error.localizedDescription)
+            appLogger.info("Failed to rename \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return false
+        }
+    }
+
+    private func siblingNames(for url: URL) -> [String] {
+        guard model.entries.contains(where: { $0.url.path == url.path }) else { return [] }
+        return model.entries.map(\.url.lastPathComponent)
+    }
+
+    private func volumeIsCaseSensitive(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]).volumeSupportsCaseSensitiveNames) == true
+    }
+}
+
+struct ActionAlert: Identifiable {
+    let id = UUID()
+    var title: String
+    var message: String
 }

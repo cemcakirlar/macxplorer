@@ -4,6 +4,7 @@ import SwiftUI
 struct SidebarTreeView: View {
     var model: BrowserModel
     var actions: ItemActions
+    var rename: RenameEditing
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -11,7 +12,12 @@ struct SidebarTreeView: View {
                 if !model.favoritePaths.isEmpty {
                     Section("Favorites") {
                         ForEach(model.favoritePaths, id: \.self) { path in
-                            FavoriteRow(path: path, isAvailable: model.favoriteIsAvailable(path))
+                            FavoriteRow(
+                                path: path,
+                                isAvailable: model.favoriteIsAvailable(path),
+                                isSelected: model.sidebarSelection == .favorite(path),
+                                rename: rename
+                            )
                         }
                         .onMove { source, destination in
                             model.moveFavorites(from: source, to: destination)
@@ -20,7 +26,7 @@ struct SidebarTreeView: View {
                 }
                 Section {
                     ForEach(model.roots) { node in
-                        SidebarBranch(model: model, node: node)
+                        SidebarBranch(model: model, node: node, rename: rename)
                     }
                 }
             }
@@ -29,6 +35,19 @@ struct SidebarTreeView: View {
             // A menu on the disclosure group covers every nested row and keeps the ancestor URL.
             .contextMenu(forSelectionType: SidebarSelection.self) { items in
                 contextMenu(for: items)
+            }
+            .onKeyPress(.return) {
+                guard rename.session == nil else { return .ignored }
+                switch model.sidebarSelection {
+                case .favorite(let path):
+                    guard model.favoriteIsAvailable(path) else { return .ignored }
+                    rename.begin(URL(fileURLWithPath: path, isDirectory: true))
+                case .folder(let url):
+                    rename.begin(url)
+                case nil:
+                    return .ignored
+                }
+                return .handled
             }
             .onChange(of: model.scrollToURL) { _, url in
                 guard let url else { return }
@@ -83,6 +102,8 @@ struct SidebarTreeView: View {
 private struct FavoriteRow: View {
     var path: String
     var isAvailable: Bool
+    var isSelected: Bool
+    var rename: RenameEditing
 
     var body: some View {
         HStack(spacing: 6) {
@@ -90,14 +111,43 @@ private struct FavoriteRow: View {
                 .resizable()
                 .frame(width: 16, height: 16)
                 .opacity(isAvailable ? 1 : 0.4)
-            Text(FileManager.default.displayName(atPath: path))
-                .lineLimit(1)
-                .foregroundStyle(isAvailable ? .primary : .tertiary)
+            name
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .help(path)
         .tag(SidebarSelection.favorite(path))
+        .overlay {
+            if isAvailable, !isRenaming {
+                RenameClickCatcher(
+                    isSelected: isSelected,
+                    onSlowClick: { rename.begin(url) },
+                    onDoubleClick: nil
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var name: some View {
+        if isRenaming {
+            InlineRenameField(
+                draft: rename.draft,
+                isFolder: true,
+                refocusID: rename.refocusID,
+                onCommit: rename.commit,
+                onCancel: rename.cancel
+            )
+        } else {
+            Text(FileManager.default.displayName(atPath: path))
+                .lineLimit(1)
+                .foregroundStyle(isAvailable ? .primary : .tertiary)
+        }
+    }
+
+    private var isRenaming: Bool {
+        guard let session = rename.session else { return false }
+        return Favorites.key(for: session.url) == Favorites.key(forPath: path)
     }
 
     private var url: URL {
@@ -108,6 +158,7 @@ private struct FavoriteRow: View {
 private struct SidebarBranch: View {
     var model: BrowserModel
     var node: FolderNode
+    var rename: RenameEditing
 
     var body: some View {
         expandedBranch
@@ -162,9 +213,32 @@ private struct SidebarBranch: View {
             Image(nsImage: IconStore.shared.image(for: node.url, isDirectory: true))
                 .resizable()
                 .frame(width: 16, height: 16)
-            Text(node.name)
-                .lineLimit(1)
+            if isRenaming {
+                InlineRenameField(
+                    draft: rename.draft,
+                    isFolder: true,
+                    refocusID: rename.refocusID,
+                    onCommit: rename.commit,
+                    onCancel: rename.cancel
+                )
+            } else {
+                Text(node.name)
+                    .lineLimit(1)
+            }
         }
+        .overlay {
+            if !isRenaming {
+                RenameClickCatcher(
+                    isSelected: model.sidebarSelection == .folder(node.url),
+                    onSlowClick: { rename.begin(node.url) },
+                    onDoubleClick: nil
+                )
+            }
+        }
+    }
+
+    private var isRenaming: Bool {
+        rename.session?.url.directoryKey.path == node.url.path
     }
 
     @ViewBuilder
@@ -181,7 +255,7 @@ private struct SidebarBranch: View {
                 .lineLimit(3)
         case .loaded:
             ForEach(node.children) { child in
-                SidebarBranch(model: model, node: child)
+                SidebarBranch(model: model, node: child, rename: rename)
             }
         }
     }

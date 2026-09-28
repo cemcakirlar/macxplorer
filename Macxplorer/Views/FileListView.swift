@@ -5,6 +5,7 @@ struct FileListView: View {
     var model: BrowserModel
     @Binding var rowSelection: Set<URL>
     var actions: ItemActions
+    var rename: RenameEditing
     @State private var sortOrder = [KeyPathComparator(\FileEntry.name)]
 
     var body: some View {
@@ -79,6 +80,12 @@ struct FileListView: View {
                 }
             )
         }
+        .onKeyPress(.return) {
+            guard rename.session == nil else { return .ignored }
+            guard rowSelection.count == 1, let url = rowSelection.first else { return .ignored }
+            rename.begin(url)
+            return .handled
+        }
     }
 
     private func nameCell(_ entry: FileEntry) -> some View {
@@ -86,15 +93,34 @@ struct FileListView: View {
             Image(nsImage: IconStore.shared.image(for: entry.url, isDirectory: entry.opensAsFolder))
                 .resizable()
                 .frame(width: 16, height: 16)
-            Text(entry.name)
-                .lineLimit(1)
+            if isRenaming(entry.url) {
+                InlineRenameField(
+                    draft: rename.draft,
+                    isFolder: rename.session?.isFolder == true,
+                    refocusID: rename.refocusID,
+                    onCommit: rename.commit,
+                    onCancel: rename.cancel
+                )
+            } else {
+                Text(entry.name)
+                    .lineLimit(1)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay {
-            RowDoubleClickCatcher {
-                open(entry)
+            if !isRenaming(entry.url) {
+                RenameClickCatcher(
+                    isSelected: rowSelection.contains(entry.url),
+                    onSlowClick: { rename.begin(entry.url) },
+                    onDoubleClick: { open(entry) }
+                )
             }
         }
+    }
+
+    private func isRenaming(_ url: URL) -> Bool {
+        guard let session = rename.session else { return false }
+        return Favorites.key(for: session.url) == Favorites.key(for: url)
     }
 
     private func plainCell<Content: View>(
@@ -112,7 +138,8 @@ struct FileListView: View {
             quickLook: { url in
                 rowSelection = [url]
                 actions.quickLook(url)
-            }
+            },
+            rename: actions.rename
         )
     }
 
@@ -142,32 +169,4 @@ enum FileMetadataFormat {
         formatter.countStyle = .file
         return formatter
     }()
-}
-
-private struct RowDoubleClickCatcher: NSViewRepresentable {
-    var onDoubleClick: @MainActor () -> Void
-
-    func makeNSView(context: Context) -> RowDoubleClickView {
-        let view = RowDoubleClickView()
-        view.onDoubleClick = onDoubleClick
-        return view
-    }
-
-    func updateNSView(_ nsView: RowDoubleClickView, context: Context) {
-        nsView.onDoubleClick = onDoubleClick
-    }
-}
-
-private final class RowDoubleClickView: NSView {
-    var onDoubleClick: (@MainActor () -> Void)?
-
-    override func mouseDown(with event: NSEvent) {
-        if event.clickCount == 2 {
-            let action = onDoubleClick
-            Task { @MainActor in
-                action?()
-            }
-        }
-        nextResponder?.mouseDown(with: event)
-    }
 }

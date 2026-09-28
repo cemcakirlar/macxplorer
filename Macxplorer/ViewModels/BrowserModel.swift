@@ -32,6 +32,7 @@ final class BrowserModel {
     private var detailIconTask: Task<Void, Never>?
     private var treeIconTask: Task<Void, Never>?
     private var pathIconTask: Task<Void, Never>?
+    private var preservesSelectionForRename = false
     private let settings: AppSettings
 
     var canGoBack: Bool { history.canGoBack }
@@ -190,6 +191,37 @@ final class BrowserModel {
 
     func refresh() async {
         await reloadListings()
+    }
+
+    /// Moves open-folder state onto `newURL` when the renamed item is that folder or a parent of it.
+    func applyRenamedItem(from oldURL: URL, to newURL: URL) async {
+        preservesSelectionForRename = true
+        history.rewrite(from: oldURL, to: newURL)
+        expanded = Set(expanded.map { RenamedPath.url($0, from: oldURL, to: newURL) })
+        settings.favoritePaths = Favorites.rewriting(settings.favoritePaths, from: oldURL.path, to: newURL.path)
+        if let selectedFavorite {
+            let updated = RenamedPath.rewriting(selectedFavorite, from: oldURL.path, to: newURL.path)
+            if updated != selectedFavorite {
+                self.selectedFavorite = updated
+            }
+        }
+        let previousPath = selectedURL?.path
+        if let selectedURL {
+            let updated = RenamedPath.url(selectedURL, from: oldURL, to: newURL)
+            if updated.path != selectedURL.path {
+                self.selectedURL = updated.directoryKey
+            }
+        }
+        await refresh()
+        if selectedURL?.path == previousPath {
+            preservesSelectionForRename = false
+        }
+    }
+
+    func consumeRenameNavigation() -> Bool {
+        let preserve = preservesSelectionForRename
+        preservesSelectionForRename = false
+        return preserve
     }
 
     func probeChildFolders(of node: FolderNode) async {

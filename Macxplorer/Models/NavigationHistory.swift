@@ -22,6 +22,11 @@ struct NavigationHistory: Equatable {
         return previous
     }
 
+    mutating func rewrite(from oldURL: URL, to newURL: URL) {
+        backStack = backStack.map { RenamedPath.url($0, from: oldURL, to: newURL) }
+        forwardStack = forwardStack.map { RenamedPath.url($0, from: oldURL, to: newURL) }
+    }
+
     mutating func goForward(from current: URL?) -> URL? {
         guard let current, let next = forwardStack.popLast() else { return nil }
         backStack.append(current.directoryKey)

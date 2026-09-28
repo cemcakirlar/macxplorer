@@ -44,6 +44,15 @@ enum Favorites {
         return missing.isEmpty ? .remove(unique) : .add(missing)
     }
 
+    /// Updates favorites that are `oldPath` or inside it. Unrelated paths, including a longer prefix, stay as stored.
+    static func rewriting(_ favorites: [String], from oldPath: String, to newPath: String) -> [String] {
+        var seen = Set<String>()
+        return favorites.compactMap { path in
+            let rewritten = RenamedPath.rewriting(path, from: oldPath, to: newPath)
+            return seen.insert(rewritten).inserted ? rewritten : nil
+        }
+    }
+
     static func applying(_ action: MenuAction, to favorites: [String]) -> [String] {
         switch action {
         case .add(let paths):
