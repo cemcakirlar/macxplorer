@@ -9,11 +9,19 @@ struct SidebarTreeView: View {
         ScrollViewReader { proxy in
             List(selection: selection) {
                 ForEach(model.roots) { node in
-                    SidebarBranch(model: model, node: node, actions: actions)
+                    SidebarBranch(model: model, node: node)
                 }
             }
             .listStyle(.sidebar)
             .navigationTitle("Folders")
+            // A menu on the disclosure group covers every nested row and keeps the ancestor URL.
+            .contextMenu(forSelectionType: URL.self) { urls in
+                ItemContextMenu(
+                    urls: Array(urls),
+                    opensAsFolder: { _ in true },
+                    actions: actions
+                )
+            }
             .onChange(of: model.scrollToURL) { _, url in
                 guard let url else { return }
                 Task { @MainActor in
@@ -37,7 +45,6 @@ struct SidebarTreeView: View {
 private struct SidebarBranch: View {
     var model: BrowserModel
     var node: FolderNode
-    var actions: ItemActions
 
     var body: some View {
         expandedBranch
@@ -50,24 +57,24 @@ private struct SidebarBranch: View {
                 DisclosureGroup(isExpanded: expansion) {
                     branchContent
                 } label: {
-                    rowLabel
+                    row
                 }
             } else {
-                rowLabel
+                row
             }
-        }
-        .tag(node.url)
-        .id(node.url)
-        .contextMenu {
-            ItemContextMenu(
-                urls: [node.url],
-                opensAsFolder: { _ in true },
-                actions: actions
-            )
         }
         .task(id: model.treeRevision) {
             await model.probeChildFolders(of: node)
         }
+    }
+
+    /// Tag stays on the label. On the disclosure group, nested rows resolve to this folder.
+    private var row: some View {
+        rowLabel
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .tag(node.url)
+            .id(node.url)
     }
 
     private var showsDisclosure: Bool {
@@ -111,7 +118,7 @@ private struct SidebarBranch: View {
                 .lineLimit(3)
         case .loaded:
             ForEach(node.children) { child in
-                SidebarBranch(model: model, node: child, actions: actions)
+                SidebarBranch(model: model, node: child)
             }
         }
     }
