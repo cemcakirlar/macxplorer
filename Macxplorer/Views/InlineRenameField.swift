@@ -153,3 +153,29 @@ final class RenameUndoRelay {
         undoManager.setActionName("Rename")
     }
 }
+
+enum TrashShortcut {
+    static func matches(_ modifiers: EventModifiers) -> Bool {
+        modifiers.subtracting([.capsLock, .command]).isEmpty
+    }
+}
+
+@MainActor
+final class TrashUndoRelay {
+    /// Puts items back. Returns the ones that stayed in the Trash.
+    var putBack: (([TrashedItem]) async -> [TrashedItem])?
+
+    func register(undoManager: UndoManager?, items: [TrashedItem]) {
+        guard let undoManager, !items.isEmpty else { return }
+        undoManager.registerUndo(withTarget: self) { relay in
+            let pending = items
+            Task { @MainActor in
+                let remaining = await relay.putBack?(pending) ?? pending
+                if !remaining.isEmpty {
+                    relay.register(undoManager: undoManager, items: remaining)
+                }
+            }
+        }
+        undoManager.setActionName("Move to Trash")
+    }
+}

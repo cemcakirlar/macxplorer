@@ -12,6 +12,7 @@ struct ContentView: View {
     @State private var renameRefocusID = 0
     @State private var renameAcceptsCommit = false
     @State private var renameUndo = RenameUndoRelay()
+    @State private var trashUndo = TrashUndoRelay()
     @Environment(\.undoManager) private var undoManager
 
     var body: some View {
@@ -224,7 +225,8 @@ struct ContentView: View {
             revealInFinder: revealInFinder,
             openInTerminal: openInTerminal(directories:),
             quickLook: quickLook,
-            rename: beginRename
+            rename: beginRename,
+            moveToTrash: moveToTrash
         )
     }
 
@@ -330,6 +332,9 @@ struct ContentView: View {
     private func installUndo() {
         renameUndo.perform = { url, newName in
             await performRename(of: url, to: newName, registersUndo: false)
+        }
+        trashUndo.putBack = { items in
+            await restoreTrashed(items)
         }
     }
 
@@ -443,6 +448,80 @@ struct ContentView: View {
 
     private func volumeIsCaseSensitive(_ url: URL) -> Bool {
         (try? url.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]).volumeSupportsCaseSensitiveNames) == true
+    }
+
+    private func moveToTrash(_ urls: [URL]) {
+        let targets = TrashTargets.roots(among: urls)
+        guard !targets.isEmpty else { return }
+        Task {
+            var moved: [TrashedItem] = []
+            var failures: [String] = []
+            for url in targets {
+                do {
+                    let trashedURL = try await Task.detached {
+                        try FileTrash.trash(at: url)
+                    }.value
+                    moved.append(TrashedItem(original: url, trashed: trashedURL))
+                } catch {
+                    let message = "“\(url.lastPathComponent)” stayed in place. \(error.localizedDescription)"
+                    failures.append(message)
+                    appLogger.info("Failed to trash \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                }
+            }
+            if !moved.isEmpty {
+                let roots = moved.map(\.original)
+                let rootPaths = roots.map(\.path)
+                listSelection = listSelection.filter { !TrashTargets.affects($0.path, trashed: rootPaths) }
+                if let quickLookURL, TrashTargets.affects(quickLookURL.path, trashed: rootPaths) {
+                    self.quickLookURL = nil
+                }
+                if let session = renameSession, TrashTargets.affects(session.url.path, trashed: rootPaths) {
+                    renameSession = nil
+                }
+                await model.applyTrashed(roots)
+                installUndo()
+                trashUndo.register(undoManager: undoManager, items: moved)
+                appLogger.info("Moved \(moved.count, privacy: .public) item(s) to the Trash")
+            }
+            if !failures.isEmpty {
+                actionAlert = ActionAlert(
+                    title: "Can't Move to Trash",
+                    message: failures.joined(separator: "\n")
+                )
+            }
+        }
+    }
+
+    private func restoreTrashed(_ items: [TrashedItem]) async -> [TrashedItem] {
+        var remaining: [TrashedItem] = []
+        var taken: [String] = []
+        var other: [String] = []
+        for item in items {
+            do {
+                try await Task.detached {
+                    try FileTrash.putBack(trashed: item.trashed, to: item.original)
+                }.value
+            } catch let error as FileTrashError {
+                remaining.append(item)
+                if case .nameTaken(let name) = error {
+                    taken.append(name)
+                }
+            } catch {
+                remaining.append(item)
+                other.append(error.localizedDescription)
+                appLogger.info("Failed to put back \(item.original.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        if remaining.count < items.count {
+            await model.refresh()
+        }
+        if !taken.isEmpty {
+            let names = taken.map { "The name “\($0)” is already taken. The item stayed in the Trash." }
+            actionAlert = ActionAlert(title: "Name Already Taken", message: names.joined(separator: "\n"))
+        } else if let message = other.first {
+            actionAlert = ActionAlert(title: "Can't Move to Trash", message: message)
+        }
+        return remaining
     }
 }
 

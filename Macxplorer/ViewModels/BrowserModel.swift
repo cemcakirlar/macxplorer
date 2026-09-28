@@ -224,6 +224,26 @@ final class BrowserModel {
         return preserve
     }
 
+    /// Pulls the open folder, history, and expanded tree up when a trashed folder contained them.
+    /// Favorite paths stay stored so they work again after the folder is put back.
+    func applyTrashed(_ urls: [URL]) async {
+        let roots = TrashTargets.roots(among: urls)
+        guard !roots.isEmpty else { return }
+        history.drop(trashed: roots)
+        expanded = Set(expanded.map { TrashTargets.url($0, trashed: roots) })
+        if let selectedFavorite,
+           TrashTargets.affects(selectedFavorite, trashed: roots.map(\.path)) {
+            self.selectedFavorite = nil
+        }
+        if let selectedURL {
+            let updated = TrashTargets.url(selectedURL, trashed: roots)
+            if updated.path != selectedURL.path {
+                self.selectedURL = updated.directoryKey
+            }
+        }
+        await refresh()
+    }
+
     func probeChildFolders(of node: FolderNode) async {
         guard node.loadState == .unloaded, node.hasChildFolders == nil else { return }
         let path = node.url.path

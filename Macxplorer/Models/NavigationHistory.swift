@@ -27,6 +27,21 @@ struct NavigationHistory: Equatable {
         forwardStack = forwardStack.map { RenamedPath.url($0, from: oldURL, to: newURL) }
     }
 
+    mutating func drop(trashed urls: [URL]) {
+        backStack = collapsing(backStack.map { TrashTargets.url($0, trashed: urls) })
+        forwardStack = collapsing(forwardStack.map { TrashTargets.url($0, trashed: urls) })
+    }
+
+    private func collapsing(_ urls: [URL]) -> [URL] {
+        var result: [URL] = []
+        for url in urls {
+            if result.last?.directoryKey.path != url.directoryKey.path {
+                result.append(url)
+            }
+        }
+        return result
+    }
+
     mutating func goForward(from current: URL?) -> URL? {
         guard let current, let next = forwardStack.popLast() else { return nil }
         backStack.append(current.directoryKey)

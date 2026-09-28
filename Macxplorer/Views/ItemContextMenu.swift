@@ -5,6 +5,7 @@ struct ItemActions {
     var openInTerminal: ([URL]) -> Void
     var quickLook: (URL) -> Void
     var rename: (URL) -> Void
+    var moveToTrash: ([URL]) -> Void
 }
 
 struct FavoriteMenuItem {
@@ -17,13 +18,15 @@ struct ItemContextMenu: View {
     var opensAsFolder: (URL) -> Bool
     var actions: ItemActions
     var favorite: FavoriteMenuItem?
-    /// A favorite whose folder is gone keeps Copy Path, disabled Rename, and the favorite item.
+    /// A favorite whose folder is gone keeps Copy Path, disabled Rename and Move to Trash, and the favorite item.
     var targetIsMissing = false
 
     var body: some View {
         if targetIsMissing {
             copyPathButton
             Button("Rename") {}
+                .disabled(true)
+            Button("Move to Trash") {}
                 .disabled(true)
         } else {
             fullMenu
@@ -56,6 +59,11 @@ struct ItemContextMenu: View {
             }
         }
         .disabled(urls.count != 1)
+
+        Button("Move to Trash") {
+            actions.moveToTrash(urls)
+        }
+        .disabled(urls.isEmpty)
 
         Divider()
 

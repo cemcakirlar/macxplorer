@@ -86,6 +86,12 @@ struct FileListView: View {
             rename.begin(url)
             return .handled
         }
+        .onKeyPress(keys: [.delete, .deleteForward], phases: .down) { press in
+            guard rename.session == nil, TrashShortcut.matches(press.modifiers) else { return .ignored }
+            guard !rowSelection.isEmpty else { return .ignored }
+            actions.moveToTrash(Array(rowSelection))
+            return .handled
+        }
     }
 
     private func nameCell(_ entry: FileEntry) -> some View {
@@ -139,7 +145,8 @@ struct FileListView: View {
                 rowSelection = [url]
                 actions.quickLook(url)
             },
-            rename: actions.rename
+            rename: actions.rename,
+            moveToTrash: actions.moveToTrash
         )
     }
 

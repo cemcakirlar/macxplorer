@@ -49,6 +49,19 @@ struct SidebarTreeView: View {
                 }
                 return .handled
             }
+            .onKeyPress(keys: [.delete, .deleteForward], phases: .down) { press in
+                guard rename.session == nil, TrashShortcut.matches(press.modifiers) else { return .ignored }
+                switch model.sidebarSelection {
+                case .favorite(let path):
+                    guard model.favoriteIsAvailable(path) else { return .ignored }
+                    actions.moveToTrash([URL(fileURLWithPath: path, isDirectory: true)])
+                case .folder(let url):
+                    actions.moveToTrash([url])
+                case nil:
+                    return .ignored
+                }
+                return .handled
+            }
             .onChange(of: model.scrollToURL) { _, url in
                 guard let url else { return }
                 Task { @MainActor in
