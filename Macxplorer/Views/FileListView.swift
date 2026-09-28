@@ -73,7 +73,10 @@ struct FileListView: View {
                 opensAsFolder: { url in
                     model.entries.first { $0.url == url }?.opensAsFolder == true
                 },
-                actions: listActions
+                actions: listActions,
+                favorite: model.favoriteMenuAction(for: Array(selection)).map {
+                    FavoriteMenuItem(action: $0, perform: model.applyFavorites)
+                }
             )
         }
     }

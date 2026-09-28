@@ -8,19 +8,27 @@ struct SidebarTreeView: View {
     var body: some View {
         ScrollViewReader { proxy in
             List(selection: selection) {
-                ForEach(model.roots) { node in
-                    SidebarBranch(model: model, node: node)
+                if !model.favoritePaths.isEmpty {
+                    Section("Favorites") {
+                        ForEach(model.favoritePaths, id: \.self) { path in
+                            FavoriteRow(path: path, isAvailable: model.favoriteIsAvailable(path))
+                        }
+                        .onMove { source, destination in
+                            model.moveFavorites(from: source, to: destination)
+                        }
+                    }
+                }
+                Section {
+                    ForEach(model.roots) { node in
+                        SidebarBranch(model: model, node: node)
+                    }
                 }
             }
             .listStyle(.sidebar)
             .navigationTitle("Folders")
             // A menu on the disclosure group covers every nested row and keeps the ancestor URL.
-            .contextMenu(forSelectionType: URL.self) { urls in
-                ItemContextMenu(
-                    urls: Array(urls),
-                    opensAsFolder: { _ in true },
-                    actions: actions
-                )
+            .contextMenu(forSelectionType: SidebarSelection.self) { items in
+                contextMenu(for: items)
             }
             .onChange(of: model.scrollToURL) { _, url in
                 guard let url else { return }
@@ -31,14 +39,69 @@ struct SidebarTreeView: View {
         }
     }
 
-    private var selection: Binding<URL?> {
+    @ViewBuilder
+    private func contextMenu(for items: Set<SidebarSelection>) -> some View {
+        let favoritePaths = items.compactMap { item -> String? in
+            if case .favorite(let path) = item { return path }
+            return nil
+        }
+        if !favoritePaths.isEmpty {
+            ItemContextMenu(
+                urls: favoritePaths.map { URL(fileURLWithPath: $0, isDirectory: true) },
+                opensAsFolder: { _ in true },
+                actions: actions,
+                favorite: FavoriteMenuItem(action: .remove(favoritePaths), perform: model.applyFavorites),
+                targetIsMissing: !favoritePaths.allSatisfy(model.favoriteIsAvailable)
+            )
+        } else {
+            let urls = items.compactMap { item -> URL? in
+                if case .folder(let url) = item { return url }
+                return nil
+            }
+            ItemContextMenu(
+                urls: urls,
+                opensAsFolder: { _ in true },
+                actions: actions,
+                favorite: model.favoriteMenuAction(for: urls).map {
+                    FavoriteMenuItem(action: $0, perform: model.applyFavorites)
+                }
+            )
+        }
+    }
+
+    private var selection: Binding<SidebarSelection?> {
         Binding(
-            get: { model.selectedURL },
-            set: { url in
-                guard let url else { return }
-                model.select(url)
+            get: { model.sidebarSelection },
+            set: { selection in
+                guard let selection else { return }
+                model.selectInSidebar(selection)
             }
         )
+    }
+}
+
+private struct FavoriteRow: View {
+    var path: String
+    var isAvailable: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(nsImage: IconStore.shared.image(for: url, isDirectory: true))
+                .resizable()
+                .frame(width: 16, height: 16)
+                .opacity(isAvailable ? 1 : 0.4)
+            Text(FileManager.default.displayName(atPath: path))
+                .lineLimit(1)
+                .foregroundStyle(isAvailable ? .primary : .tertiary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .help(path)
+        .tag(SidebarSelection.favorite(path))
+    }
+
+    private var url: URL {
+        URL(fileURLWithPath: path, isDirectory: true)
     }
 }
 
@@ -73,7 +136,7 @@ private struct SidebarBranch: View {
         rowLabel
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
-            .tag(node.url)
+            .tag(SidebarSelection.folder(node.url))
             .id(node.url)
     }
 

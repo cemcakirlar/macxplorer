@@ -1,12 +1,19 @@
 import Foundation
 import Observation
 
+enum SidebarSelection: Hashable {
+    case favorite(String)
+    case folder(URL)
+}
+
 @MainActor
 @Observable
 final class BrowserModel {
     let roots: [FolderNode]
     var expanded: Set<URL> = []
     var selectedURL: URL?
+    /// Set only by a favorite click. Any other navigation highlights the tree row instead.
+    private(set) var selectedFavorite: String?
     var scrollToURL: URL?
     var entries: [FileEntry] = []
     var detailError: String?
@@ -78,6 +85,50 @@ final class BrowserModel {
         }
     }
 
+    var favoritePaths: [String] { settings.favoritePaths }
+
+    var sidebarSelection: SidebarSelection? {
+        if let selectedFavorite { return .favorite(selectedFavorite) }
+        return selectedURL.map(SidebarSelection.folder)
+    }
+
+    func selectInSidebar(_ selection: SidebarSelection) {
+        switch selection {
+        case .favorite(let path):
+            selectFavorite(path)
+        case .folder(let url):
+            selectedFavorite = nil
+            select(url)
+        }
+    }
+
+    func favoriteIsAvailable(_ path: String) -> Bool {
+        Favorites.opensAsFolder(URL(fileURLWithPath: path, isDirectory: true))
+    }
+
+    /// Files, packages and aliases in `urls` are skipped.
+    func favoriteMenuAction(for urls: [URL]) -> Favorites.MenuAction? {
+        let candidates = urls.filter(Favorites.opensAsFolder).map(Favorites.key(for:))
+        return Favorites.menuAction(for: candidates, favorites: settings.favoritePaths)
+    }
+
+    func applyFavorites(_ action: Favorites.MenuAction) {
+        settings.favoritePaths = Favorites.applying(action, to: settings.favoritePaths)
+        if let selectedFavorite, !settings.favoritePaths.contains(selectedFavorite) {
+            self.selectedFavorite = nil
+        }
+    }
+
+    func moveFavorites(from source: IndexSet, to destination: Int) {
+        settings.favoritePaths = Favorites.moving(settings.favoritePaths, from: source, to: destination)
+    }
+
+    private func selectFavorite(_ path: String) {
+        guard favoriteIsAvailable(path) else { return }
+        select(URL(fileURLWithPath: path, isDirectory: true))
+        selectedFavorite = path
+    }
+
     func select(_ url: URL) {
         let next = url.directoryKey
         guard next.path != selectedURL?.path else { return }
@@ -94,6 +145,7 @@ final class BrowserModel {
             recordVisit(to: next)
         }
         appLogger.info("Opening \(next.path, privacy: .public)")
+        selectedFavorite = nil
         selectedURL = next
         settings.rememberFolder(next)
         beginDetailLoad(next)
