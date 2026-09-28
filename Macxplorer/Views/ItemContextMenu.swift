@@ -6,6 +6,7 @@ struct ItemActions {
     var quickLook: (URL) -> Void
     var rename: (URL) -> Void
     var moveToTrash: ([URL]) -> Void
+    var newFolder: () -> Void
 }
 
 struct FavoriteMenuItem {
@@ -20,6 +21,8 @@ struct ItemContextMenu: View {
     var favorite: FavoriteMenuItem?
     /// A favorite whose folder is gone keeps Copy Path, disabled Rename and Move to Trash, and the favorite item.
     var targetIsMissing = false
+    /// New Folder writes to the open folder, so an empty selection still enables it.
+    var canCreateFolder = false
 
     var body: some View {
         if targetIsMissing {
@@ -52,6 +55,11 @@ struct ItemContextMenu: View {
             actions.openInTerminal(TerminalDirectory.urls(for: urls, opensAsFolder: opensAsFolder))
         }
         .disabled(urls.isEmpty)
+
+        Button("New Folder") {
+            actions.newFolder()
+        }
+        .disabled(!canCreateFolder)
 
         Button("Rename") {
             if let url = urls.first {

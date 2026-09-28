@@ -77,7 +77,8 @@ struct FileListView: View {
                 actions: listActions,
                 favorite: model.favoriteMenuAction(for: Array(selection)).map {
                     FavoriteMenuItem(action: $0, perform: model.applyFavorites)
-                }
+                },
+                canCreateFolder: model.selectedURL != nil
             )
         }
         .onKeyPress(.return) {
@@ -146,7 +147,8 @@ struct FileListView: View {
                 actions.quickLook(url)
             },
             rename: actions.rename,
-            moveToTrash: actions.moveToTrash
+            moveToTrash: actions.moveToTrash,
+            newFolder: actions.newFolder
         )
     }
 

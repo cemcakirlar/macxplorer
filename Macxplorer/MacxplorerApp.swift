@@ -18,6 +18,7 @@ struct MacxplorerApp: App {
         .commands {
             CommandGroup(after: .pasteboard) {
                 CopyPathCommand()
+                NewFolderCommand()
             }
         }
 
@@ -36,5 +37,17 @@ private struct CopyPathCommand: View {
         }
         .keyboardShortcut("c", modifiers: [.command, .option])
         .disabled(copyPathAction?.isEnabled != true)
+    }
+}
+
+private struct NewFolderCommand: View {
+    @FocusedValue(\.newFolderAction) private var newFolderAction
+
+    var body: some View {
+        Button("New Folder") {
+            newFolderAction?.perform()
+        }
+        .keyboardShortcut("n", modifiers: [.command, .shift])
+        .disabled(newFolderAction?.isEnabled != true)
     }
 }

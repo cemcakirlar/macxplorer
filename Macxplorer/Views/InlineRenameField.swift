@@ -179,3 +179,28 @@ final class TrashUndoRelay {
         undoManager.setActionName("Move to Trash")
     }
 }
+
+@MainActor
+final class NewFolderUndoRelay {
+    var undo: ((URL, CreatedFolderIdentity) async -> Void)?
+
+    func register(undoManager: UndoManager?, folder: URL, identity: CreatedFolderIdentity) {
+        guard let undoManager else { return }
+        undoManager.registerUndo(withTarget: self) { relay in
+            let created = folder
+            let createdIdentity = identity
+            Task { @MainActor in
+                await relay.undo?(created, createdIdentity)
+            }
+        }
+        undoManager.setActionName("New Folder")
+    }
+}
+
+final class CreatedFolderIdentity: @unchecked Sendable {
+    let value: NSObject?
+
+    init(_ value: NSObject?) {
+        self.value = value
+    }
+}

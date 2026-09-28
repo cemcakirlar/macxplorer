@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var renameAcceptsCommit = false
     @State private var renameUndo = RenameUndoRelay()
     @State private var trashUndo = TrashUndoRelay()
+    @State private var newFolderUndo = NewFolderUndoRelay()
     @Environment(\.undoManager) private var undoManager
 
     var body: some View {
@@ -43,6 +44,7 @@ struct ContentView: View {
             actionToolbar
         }
         .focusedSceneValue(\.copyPathAction, copyPathAction)
+        .focusedSceneValue(\.newFolderAction, newFolderAction)
         .task {
             await model.bootstrap()
         }
@@ -205,6 +207,12 @@ struct ContentView: View {
         }
     }
 
+    private var newFolderAction: NewFolderAction {
+        NewFolderAction(isEnabled: model.selectedURL != nil) {
+            createNewFolder()
+        }
+    }
+
     private var copyPathURLs: [URL] {
         if !listSelection.isEmpty {
             return Array(listSelection)
@@ -226,7 +234,8 @@ struct ContentView: View {
             openInTerminal: openInTerminal(directories:),
             quickLook: quickLook,
             rename: beginRename,
-            moveToTrash: moveToTrash
+            moveToTrash: moveToTrash,
+            newFolder: createNewFolder
         )
     }
 
@@ -335,6 +344,9 @@ struct ContentView: View {
         }
         trashUndo.putBack = { items in
             await restoreTrashed(items)
+        }
+        newFolderUndo.undo = { url, identity in
+            await undoNewFolder(url, identity: identity.value)
         }
     }
 
@@ -522,6 +534,63 @@ struct ContentView: View {
             actionAlert = ActionAlert(title: "Can't Move to Trash", message: message)
         }
         return remaining
+    }
+
+    private func createNewFolder() {
+        guard let parent = model.selectedURL else { return }
+        Task {
+            do {
+                let created = try await Task.detached {
+                    try NewFolder.create(in: parent)
+                }.value
+                let listed = await model.refreshedEntry(matching: created) ?? created
+                cancelRename()
+                listSelection = [listed]
+                let folder = listed
+                Task { @MainActor in
+                    beginRename(folder)
+                }
+                installUndo()
+                newFolderUndo.register(
+                    undoManager: undoManager,
+                    folder: created,
+                    identity: CreatedFolderIdentity(folderIdentity(created))
+                )
+                appLogger.info("Created folder at \(created.path, privacy: .public)")
+            } catch {
+                actionAlert = ActionAlert(title: "Can't Create Folder", message: error.localizedDescription)
+                appLogger.info("Failed to create folder in \(parent.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    private func undoNewFolder(_ url: URL, identity: NSObject?) async {
+        guard stillTheCreatedFolder(url, identity: identity) else { return }
+        if let session = renameSession, Favorites.key(for: session.url) == Favorites.key(for: url) {
+            renameSession = nil
+        }
+        do {
+            _ = try await Task.detached {
+                try FileTrash.trash(at: url)
+            }.value
+            listSelection = listSelection.filter { Favorites.key(for: $0) != Favorites.key(for: url) }
+            await model.refresh()
+        } catch {
+            actionAlert = ActionAlert(title: "Can't Move to Trash", message: error.localizedDescription)
+            appLogger.info("Failed to undo new folder at \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func stillTheCreatedFolder(_ url: URL, identity: NSObject?) -> Bool {
+        guard FileManager.default.fileExists(atPath: url.path) else { return false }
+        guard let identity else { return true }
+        guard let current = folderIdentity(url) else { return false }
+        return current.isEqual(identity)
+    }
+
+    private func folderIdentity(_ url: URL) -> NSObject? {
+        let values = try? url.resourceValues(forKeys: [.fileResourceIdentifierKey])
+        return values?.fileResourceIdentifier as? NSObject
     }
 }
 
