@@ -74,4 +74,14 @@ final class DropDecisionTests: XCTestCase {
             .move
         )
     }
+
+    func testCursorMatchesTheDiskAndTheOptionKey() {
+        let folder = DropTargetKind.folder(URL(fileURLWithPath: "/Volumes/A/Dest", isDirectory: true))
+        XCTAssertEqual(DropDecision.cursor(target: folder, optionPressed: false, sameVolume: true), .move)
+        XCTAssertEqual(DropDecision.cursor(target: folder, optionPressed: false, sameVolume: false), .copy)
+        XCTAssertEqual(DropDecision.cursor(target: folder, optionPressed: true, sameVolume: true), .copy)
+        XCTAssertEqual(DropDecision.cursor(target: .file, optionPressed: false, sameVolume: true), .forbidden)
+        XCTAssertEqual(DropDecision.cursor(target: .missing, optionPressed: false, sameVolume: true), .forbidden)
+        XCTAssertEqual(DropDecision.cursor(target: folder, optionPressed: false, sameVolume: nil), .copy)
+    }
 }

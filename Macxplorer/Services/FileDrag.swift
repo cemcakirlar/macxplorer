@@ -34,6 +34,18 @@ enum FileDrag {
         return deduplicated(found)
     }
 
+    static func urlsOnDragPasteboard() -> [URL] {
+        let pasteboard = NSPasteboard(name: .drag)
+        guard
+            let objects = pasteboard.readObjects(forClasses: [NSURL.self], options: [
+                .urlReadingFileURLsOnly: true
+            ]) as? [URL]
+        else {
+            return []
+        }
+        return deduplicated(objects.filter(\.isFileURL))
+    }
+
     private static let filenamesType = "NSFilenamesPboardType"
 
     private static func fileURL(from provider: NSItemProvider) async -> URL? {

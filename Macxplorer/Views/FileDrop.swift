@@ -11,13 +11,27 @@ struct FileDropDelegate: DropDelegate {
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        switch target {
-        case .file, .missing:
+        let optionPressed = NSEvent.modifierFlags.contains(.option)
+        switch DropDecision.cursor(
+            target: target,
+            optionPressed: optionPressed,
+            sameVolume: sameVolumeAsDraggedFiles()
+        ) {
+        case .forbidden:
             return DropProposal(operation: .forbidden)
-        case .folder:
-            let copies = NSEvent.modifierFlags.contains(.option)
-            return DropProposal(operation: copies ? .copy : .move)
+        case .copy:
+            return DropProposal(operation: .copy)
+        case .move:
+            return DropProposal(operation: .move)
         }
+    }
+
+    private func sameVolumeAsDraggedFiles() -> Bool? {
+        guard case .folder(let destination) = target else { return nil }
+        let urls = FileDrag.urlsOnDragPasteboard()
+        guard !urls.isEmpty else { return nil }
+        let sameVolume = FileTransfer.Operations.live.sameVolume
+        return urls.allSatisfy { sameVolume($0, destination) }
     }
 
     func performDrop(info: DropInfo) -> Bool {

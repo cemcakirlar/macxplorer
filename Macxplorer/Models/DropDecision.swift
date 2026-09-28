@@ -15,6 +15,12 @@ enum DropItemDecision: Equatable, Sendable {
     case refuse
 }
 
+enum DropCursor: Equatable, Sendable {
+    case forbidden
+    case copy
+    case move
+}
+
 enum DropDecision {
     /// Option always copies. Otherwise the same disk moves and another disk copies.
     /// A file row, a missing favorite, and a drop onto the item or into its subfolder write nothing.
@@ -29,6 +35,17 @@ enum DropDecision {
             return .refuse
         }
         if optionPressed || !sameVolume {
+            return .copy
+        }
+        return .move
+    }
+
+    /// The drag badge. A file row and a missing favorite are forbidden.
+    /// Option or another disk copies. The same disk moves.
+    /// `sameVolume == nil` means the dragged URLs are unknown, so the badge does not claim Move.
+    static func cursor(target: DropTargetKind, optionPressed: Bool, sameVolume: Bool?) -> DropCursor {
+        guard case .folder = target else { return .forbidden }
+        if optionPressed || sameVolume != true {
             return .copy
         }
         return .move
