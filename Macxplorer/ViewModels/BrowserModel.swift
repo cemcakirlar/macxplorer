@@ -193,6 +193,34 @@ final class BrowserModel {
         await reloadListings()
     }
 
+    /// Reloads the open folder and expanded sidebar without clearing what is already on screen.
+    /// Returns false during the first load, when there is nothing to keep visible.
+    func refreshVisible() async -> Bool {
+        guard let selectedURL else { return false }
+        guard !(isLoadingDetail && entries.isEmpty) else { return false }
+        await reloadExpandedTree()
+        await reloadDetailInPlace(selectedURL)
+        return true
+    }
+
+    /// Reloads expanded sidebar folders in place. Does not touch the open-folder listing.
+    func reloadExpandedTree() async {
+        listingGeneration += 1
+        await reload(nodes: roots, showsLoading: false)
+        syncPinnedPath()
+    }
+
+    /// Keeps the current list selection when the next `selectedURL` change is this drop's destination.
+    func holdListSelectionAcrossNavigation() {
+        preservesSelectionForRename = true
+    }
+
+    /// Waits for the listing already started by navigation. Does not start another reload.
+    func listedMatches(for urls: [URL]) async -> [URL] {
+        await detailTask?.value
+        return matchingEntries(urls)
+    }
+
     /// Reloads the open folder and returns the listed URL for `url`, if it appears.
     func refreshedEntry(matching url: URL) async -> URL? {
         let matches = await refreshedEntries(matching: [url])
@@ -203,6 +231,10 @@ final class BrowserModel {
     func refreshedEntries(matching urls: [URL]) async -> [URL] {
         await refresh()
         await detailTask?.value
+        return matchingEntries(urls)
+    }
+
+    private func matchingEntries(_ urls: [URL]) -> [URL] {
         let keys = Set(urls.map { Favorites.key(for: $0) })
         return entries.filter { keys.contains(Favorites.key(for: $0.url)) }.map(\.url)
     }
@@ -271,20 +303,20 @@ final class BrowserModel {
         node.hasChildFolders = found
     }
 
-    func loadChildren(of node: FolderNode) async {
+    func loadChildren(of node: FolderNode, showsLoading: Bool = true) async {
         let path = node.url.path
         let ticket = (childTickets[path] ?? 0) + 1
         childTickets[path] = ticket
         let generation = listingGeneration
         let includeHidden = showHiddenInSidebar
-        node.loadState = .loading
+        if showsLoading || node.loadState != .loaded {
+            node.loadState = .loading
+        }
 
         do {
             let listed = try await FileSystemService.listDirectory(at: node.url, showHidden: includeHidden)
             guard childTickets[path] == ticket, generation == listingGeneration else { return }
-            node.children = listed.filter(\.opensAsFolder).map { entry in
-                FolderNode(url: entry.url, name: entry.name)
-            }
+            node.children = folderNodes(listed, keeping: node.children)
             node.loadState = .loaded
             syncPinnedPath()
             scheduleIconPrefetch(node.children.map(\.url), forTree: true)
@@ -357,6 +389,16 @@ final class BrowserModel {
         }
     }
 
+    private func reloadDetailInPlace(_ url: URL) async {
+        detailTicket += 1
+        let ticket = detailTicket
+        detailIconTask?.cancel()
+        detailTask?.cancel()
+        let task = Task { await self.loadDetail(at: url, ticket: ticket) }
+        detailTask = task
+        await task.value
+    }
+
     private func reloadListings() async {
         await reloadTree()
         if let selectedURL {
@@ -366,29 +408,38 @@ final class BrowserModel {
 
     private func reloadTree() async {
         listingGeneration += 1
+        clearUnloadedProbes(in: roots)
         treeRevision += 1
-        resetTree()
-        pinnedPaths.removeAll()
-        await reloadExpandedNodes()
+        await reload(nodes: roots, showsLoading: false)
         syncPinnedPath()
     }
 
-    private func resetTree() {
-        for root in roots {
-            root.children = []
-            root.loadState = .unloaded
-            root.hasChildFolders = nil
+    /// Keeps an already loaded subtree so a refresh does not collapse the outline and move the scroll.
+    private func folderNodes(_ listed: [FileEntry], keeping existing: [FolderNode]) -> [FolderNode] {
+        let kept = Dictionary(uniqueKeysWithValues: existing.map { (Favorites.key(for: $0.url), $0) })
+        return listed.filter(\.opensAsFolder).map { entry in
+            let key = Favorites.key(for: entry.url)
+            if let node = kept[key] {
+                node.name = entry.name
+                return node
+            }
+            return FolderNode(url: entry.url, name: entry.name)
         }
     }
 
-    private func reloadExpandedNodes() async {
-        await reload(nodes: roots)
+    private func clearUnloadedProbes(in nodes: [FolderNode]) {
+        for node in nodes {
+            if node.loadState == .unloaded {
+                node.hasChildFolders = nil
+            }
+            clearUnloadedProbes(in: node.children)
+        }
     }
 
-    private func reload(nodes: [FolderNode]) async {
+    private func reload(nodes: [FolderNode], showsLoading: Bool) async {
         for node in nodes where expanded.contains(node.url) {
-            await loadChildren(of: node)
-            await reload(nodes: node.children)
+            await loadChildren(of: node, showsLoading: showsLoading)
+            await reload(nodes: node.children, showsLoading: showsLoading)
         }
     }
 

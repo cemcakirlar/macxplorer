@@ -6,6 +6,7 @@ struct SidebarTreeView: View {
     var actions: ItemActions
     var rename: RenameEditing
     var receiveDrop: ([URL], DropTargetKind, Bool) -> Void
+    @State private var hoveredDropURL: URL?
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -17,9 +18,15 @@ struct SidebarTreeView: View {
                                 path: path,
                                 isAvailable: model.favoriteIsAvailable(path),
                                 isSelected: model.sidebarSelection == .favorite(path),
+                                isDropTarget: DropHover.contains(
+                                    hoveredDropURL,
+                                    folder: URL(fileURLWithPath: path, isDirectory: true)
+                                ),
                                 rename: rename,
                                 receiveDrop: receiveDrop,
-                                onSelect: { model.selectInSidebar(.favorite(path)) }
+                                onSelect: { model.selectInSidebar(.favorite(path)) },
+                                onDropHover: setDropHover,
+                                onDropFinish: clearDropHover
                             )
                         }
                         .onMove { source, destination in
@@ -29,7 +36,15 @@ struct SidebarTreeView: View {
                 }
                 Section {
                     ForEach(model.roots) { node in
-                        SidebarBranch(model: model, node: node, rename: rename, receiveDrop: receiveDrop)
+                        SidebarBranch(
+                            model: model,
+                            node: node,
+                            rename: rename,
+                            receiveDrop: receiveDrop,
+                            hoveredDropURL: hoveredDropURL,
+                            onDropHover: setDropHover,
+                            onDropFinish: clearDropHover
+                        )
                     }
                 }
             }
@@ -117,6 +132,20 @@ struct SidebarTreeView: View {
         }
     }
 
+    private func setDropHover(_ folder: URL, hovering: Bool) {
+        if hovering {
+            var next = hoveredDropURL
+            DropHover.update(&next, folder: folder, hovering: true)
+            hoveredDropURL = next
+        } else if let current = hoveredDropURL, Favorites.key(for: current) == Favorites.key(for: folder) {
+            hoveredDropURL = nil
+        }
+    }
+
+    private func clearDropHover() {
+        hoveredDropURL = nil
+    }
+
     private var selection: Binding<SidebarSelection?> {
         Binding(
             get: { model.sidebarSelection },
@@ -132,9 +161,12 @@ private struct FavoriteRow: View {
     var path: String
     var isAvailable: Bool
     var isSelected: Bool
+    var isDropTarget: Bool
     var rename: RenameEditing
     var receiveDrop: ([URL], DropTargetKind, Bool) -> Void
     var onSelect: () -> Void
+    var onDropHover: (URL, Bool) -> Void
+    var onDropFinish: () -> Void
 
     var body: some View {
         HStack(spacing: 6) {
@@ -152,9 +184,12 @@ private struct FavoriteRow: View {
             of: [.fileURL],
             delegate: FileDropDelegate(
                 target: isAvailable ? .folder(url) : .missing,
-                receive: receiveDrop
+                receive: receiveDrop,
+                onHover: isAvailable ? { hovering in onDropHover(url, hovering) } : nil,
+                onFinish: onDropFinish
             )
         )
+        .listRowBackground(isDropTarget ? DropTargetHighlight() : nil)
         .overlay {
             if isAvailable, !isRenaming {
                 RenameClickCatcher(
@@ -201,6 +236,9 @@ private struct SidebarBranch: View {
     var node: FolderNode
     var rename: RenameEditing
     var receiveDrop: ([URL], DropTargetKind, Bool) -> Void
+    var hoveredDropURL: URL?
+    var onDropHover: (URL, Bool) -> Void
+    var onDropFinish: () -> Void
 
     var body: some View {
         expandedBranch
@@ -245,7 +283,15 @@ private struct SidebarBranch: View {
             .id(node.url)
             .onDrop(
                 of: [.fileURL],
-                delegate: FileDropDelegate(target: .folder(node.url), receive: receiveDrop)
+                delegate: FileDropDelegate(
+                    target: .folder(node.url),
+                    receive: receiveDrop,
+                    onHover: { hovering in onDropHover(node.url, hovering) },
+                    onFinish: onDropFinish
+                )
+            )
+            .listRowBackground(
+                DropHover.contains(hoveredDropURL, folder: node.url) ? DropTargetHighlight() : nil
             )
     }
 
@@ -304,7 +350,15 @@ private struct SidebarBranch: View {
                 .lineLimit(3)
         case .loaded:
             ForEach(node.children) { child in
-                SidebarBranch(model: model, node: child, rename: rename, receiveDrop: receiveDrop)
+                SidebarBranch(
+                    model: model,
+                    node: child,
+                    rename: rename,
+                    receiveDrop: receiveDrop,
+                    hoveredDropURL: hoveredDropURL,
+                    onDropHover: onDropHover,
+                    onDropFinish: onDropFinish
+                )
             }
         }
     }

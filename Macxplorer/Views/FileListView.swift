@@ -8,6 +8,7 @@ struct FileListView: View {
     var rename: RenameEditing
     var receiveDrop: ([URL], DropTargetKind, Bool) -> Void
     @State private var sortOrder = [KeyPathComparator(\FileEntry.name)]
+    @State private var hoveredDrop = DropHoverTracker()
 
     var body: some View {
         Group {
@@ -46,12 +47,12 @@ struct FileListView: View {
     private var table: some View {
         Table(rows, selection: $rowSelection, sortOrder: $sortOrder) {
             TableColumn("Name", value: \.name) { entry in
-                rowDrop(for: entry) { nameCell(entry) }
+                rowDrop(for: entry, edge: .leading) { nameCell(entry) }
             }
             .width(min: 180, ideal: 280)
 
             TableColumn("Date Modified", value: \.modifiedColumn) { entry in
-                rowDrop(for: entry, dragFromCell: true) {
+                rowDrop(for: entry, dragFromCell: true, edge: .middle) {
                     plainCell {
                         Text(FileMetadataFormat.dateText(entry.modified))
                             .foregroundStyle(.secondary)
@@ -61,7 +62,7 @@ struct FileListView: View {
             .width(min: 140, ideal: 170)
 
             TableColumn("Size", value: \.sizeColumn) { entry in
-                rowDrop(for: entry, dragFromCell: true) {
+                rowDrop(for: entry, dragFromCell: true, edge: .middle) {
                     plainCell(alignment: .trailing) {
                         Text(FileMetadataFormat.sizeText(bytes: entry.size))
                             .monospacedDigit()
@@ -72,7 +73,7 @@ struct FileListView: View {
             .width(min: 70, ideal: 90)
 
             TableColumn("Kind", value: \.kind) { entry in
-                rowDrop(for: entry, dragFromCell: true) {
+                rowDrop(for: entry, dragFromCell: true, edge: .trailing) {
                     plainCell {
                         Text(entry.kind)
                             .lineLimit(1)
@@ -112,9 +113,15 @@ struct FileListView: View {
     private func rowDrop<Content: View>(
         for entry: FileEntry,
         dragFromCell: Bool = false,
+        edge: DropTargetHighlight.Edge = .all,
         @ViewBuilder content: () -> Content
     ) -> some View {
         content()
+            .background {
+                if DropHover.contains(hoveredDrop.url, folder: entry.url) {
+                    DropTargetHighlight(edge: edge)
+                }
+            }
             .overlay {
                 if dragFromCell {
                     FileDragSource(
@@ -128,9 +135,29 @@ struct FileListView: View {
                 of: [.fileURL],
                 delegate: FileDropDelegate(
                     target: entry.opensAsFolder ? .folder(entry.url) : .file,
-                    receive: receiveDrop
+                    receive: receiveDrop,
+                    onHover: entry.opensAsFolder ? { hovering in
+                        setDropHover(entry.url, hovering: hovering)
+                    } : nil,
+                    onFinish: clearDropHover
                 )
             )
+    }
+
+    private func clearDropHover() {
+        hoveredDrop = DropHoverTracker()
+    }
+
+    private func setDropHover(_ folder: URL, hovering: Bool) {
+        if hovering {
+            hoveredDrop.enter(folder)
+            return
+        }
+        guard let epoch = hoveredDrop.exit(folder) else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(40))
+            hoveredDrop.clearIfUnchanged(epoch: epoch, folder: folder)
+        }
     }
 
     private var openFolderTarget: DropTargetKind {

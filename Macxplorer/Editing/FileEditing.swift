@@ -381,8 +381,19 @@ final class FileEditing {
                 items: records,
                 actionName: items.allSatisfy(\.moving) ? "Move" : "Copy"
             )
-            let listed = await model.refreshedEntries(matching: records.map(\.write.url))
-            listSelection = Set(listed.isEmpty ? records.map(\.write.url) : listed)
+            let written = records.map(\.write.url)
+            let listed: [URL]
+            if destination.directoryKey.path != model.selectedURL?.directoryKey.path {
+                model.holdListSelectionAcrossNavigation()
+                await model.navigate(to: destination)
+                if records.contains(where: movedFolder) {
+                    await model.reloadExpandedTree()
+                }
+                listed = await model.listedMatches(for: written)
+            } else {
+                listed = await model.refreshedEntries(matching: written)
+            }
+            listSelection = Set(listed.isEmpty ? written : listed)
             appLogger.info("Transferred \(records.count, privacy: .public) item(s) into \(destination.path, privacy: .public)")
         }
         if !failures.isEmpty {
@@ -556,6 +567,14 @@ final class FileEditing {
     private func folderIdentity(_ url: URL) -> NSObject? {
         let values = try? url.resourceValues(forKeys: [.fileResourceIdentifierKey])
         return values?.fileResourceIdentifier as? NSObject
+    }
+
+    private func movedFolder(_ record: TransferUndoItem) -> Bool {
+        let write = record.write
+        let moved = write.movedFrom != nil || write.crossVolumeSource != nil
+        guard moved else { return false }
+        let values = try? write.url.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey])
+        return values?.isSymbolicLink != true && values?.isDirectory == true
     }
 
     private func transferItemExists(_ url: URL) -> Bool {

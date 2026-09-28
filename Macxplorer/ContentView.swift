@@ -42,6 +42,12 @@ struct ContentView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                 editing.pasteboardToken += 1
+                guard editing.renameSession == nil, !editing.isTransferring else { return }
+                Task {
+                    guard await model.refreshVisible() else { return }
+                    let listed = Set(model.entries.map { Favorites.key(for: $0.url) })
+                    editing.listSelection = editing.listSelection.filter { listed.contains(Favorites.key(for: $0)) }
+                }
             }
             .alert(
                 editing.actionAlert?.title ?? "",
