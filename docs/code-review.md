@@ -56,4 +56,3 @@ Still open is the four-click manual pass, about 2 minutes:
 
 - Ad-hoc signing turns the hardened runtime off at signing time, even with `ENABLE_HARDENED_RUNTIME = YES`. A Developer ID build would keep it on.
 - App Sandbox is off by design.
-- There's a stray `DerivedData/` folder at the repo root, which is gitignored. The scripts use `.build/DerivedData`. Deleting it needs the owner's OK.
