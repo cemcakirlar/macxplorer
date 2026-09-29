@@ -384,7 +384,7 @@ final class FileEditing {
             let written = records.map(\.write.url)
             let listed: [URL]
             if destination.directoryKey.path != model.selectedURL?.directoryKey.path {
-                model.holdListSelectionAcrossNavigation()
+                model.holdListSelection(across: destination)
                 await model.navigate(to: destination)
                 if records.contains(where: movedFolder) {
                     await model.reloadExpandedTree()

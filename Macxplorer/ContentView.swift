@@ -18,8 +18,11 @@ struct ContentView: View {
             .onAppear {
                 editing.bind(model: model, undoManager: undoManager)
             }
-            .onChange(of: model.selectedURL) { _, _ in
-                if model.consumeRenameNavigation() {
+            .onChange(of: undoManager.map(ObjectIdentifier.init)) { _, _ in
+                editing.bind(model: model, undoManager: undoManager)
+            }
+            .onChange(of: model.selectedURL) { _, newURL in
+                if model.consumeSelectionHold(for: newURL) {
                     return
                 }
                 editing.listSelection = []

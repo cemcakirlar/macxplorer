@@ -32,7 +32,7 @@ final class BrowserModel {
     private var detailIconTask: Task<Void, Never>?
     private var treeIconTask: Task<Void, Never>?
     private var pathIconTask: Task<Void, Never>?
-    private var preservesSelectionForRename = false
+    private var selectionHold = SelectionHold()
     private let settings: AppSettings
 
     var canGoBack: Bool { history.canGoBack }
@@ -210,9 +210,9 @@ final class BrowserModel {
         syncPinnedPath()
     }
 
-    /// Keeps the current list selection when the next `selectedURL` change is this drop's destination.
-    func holdListSelectionAcrossNavigation() {
-        preservesSelectionForRename = true
+    /// Keeps the current list selection when the next `selectedURL` change is `destination`.
+    func holdListSelection(across destination: URL) {
+        selectionHold.arm(for: destination)
     }
 
     /// Waits for the listing already started by navigation. Does not start another reload.
@@ -241,7 +241,6 @@ final class BrowserModel {
 
     /// Moves open-folder state onto `newURL` when the renamed item is that folder or a parent of it.
     func applyRenamedItem(from oldURL: URL, to newURL: URL) async {
-        preservesSelectionForRename = true
         history.rewrite(from: oldURL, to: newURL)
         expanded = Set(expanded.map { RenamedPath.url($0, from: oldURL, to: newURL) })
         settings.favoritePaths = Favorites.rewriting(settings.favoritePaths, from: oldURL.path, to: newURL.path)
@@ -251,23 +250,18 @@ final class BrowserModel {
                 self.selectedFavorite = updated
             }
         }
-        let previousPath = selectedURL?.path
         if let selectedURL {
             let updated = RenamedPath.url(selectedURL, from: oldURL, to: newURL)
             if updated.path != selectedURL.path {
+                selectionHold.arm(for: updated)
                 self.selectedURL = updated.directoryKey
             }
         }
         await refresh()
-        if selectedURL?.path == previousPath {
-            preservesSelectionForRename = false
-        }
     }
 
-    func consumeRenameNavigation() -> Bool {
-        let preserve = preservesSelectionForRename
-        preservesSelectionForRename = false
-        return preserve
+    func consumeSelectionHold(for url: URL?) -> Bool {
+        selectionHold.consume(for: url)
     }
 
     /// Pulls the open folder, history, and expanded tree up when a trashed folder contained them.

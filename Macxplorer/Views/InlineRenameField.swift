@@ -59,6 +59,13 @@ struct InlineRenameField: View {
         let end = draft.index(draft.startIndex, offsetBy: prefix.count, limitedBy: draft.endIndex) ?? draft.endIndex
         selection = TextSelection(range: draft.startIndex..<end)
         focused = true
+        // Inside the sidebar list the first request is dropped when Return opened the field.
+        Task { @MainActor in
+            await Task.yield()
+            if !focused {
+                focused = true
+            }
+        }
     }
 }
 
@@ -132,6 +139,7 @@ final class RenameClickView: NSView, NSDraggingSource {
     }
 
     override func mouseDown(with event: NSEvent) {
+        focusEnclosingTable()
         dragged = false
         dragStart = convert(event.locationInWindow, from: nil)
         if event.clickCount >= 2 {
@@ -197,6 +205,12 @@ final class RenameClickView: NSView, NSDraggingSource {
         guard !pointerMoved(from: start), event.clickCount < 2 else { return }
         deliverClick(event.modifierFlags)
         if wasSelected { scheduleSlowClick() }
+    }
+
+    /// This view takes the click, so the table under it would otherwise never get keyboard focus.
+    private func focusEnclosingTable() {
+        guard let window, let table = enclosingTable(), window.firstResponder !== table else { return }
+        window.makeFirstResponder(table)
     }
 
     private func enclosingTable() -> NSTableView? {
@@ -304,8 +318,9 @@ final class RenameUndoRelay {
 }
 
 enum TrashShortcut {
+    /// Delete and Forward Delete arrive with `.function` set, so it is ignored with Caps Lock.
     static func matches(_ modifiers: EventModifiers) -> Bool {
-        modifiers.subtracting([.capsLock, .command]).isEmpty
+        modifiers.subtracting([.capsLock, .function, .numericPad]) == .command
     }
 }
 
