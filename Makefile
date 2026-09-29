@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: all run run-fg stop build release package release-patch release-minor release-major release-publish release-dry-run install logs clean help
+.PHONY: all run run-fg stop build release package release-patch release-minor release-major release-publish release-dry-run install logs clean tests help
 
 all: help
 
@@ -60,6 +60,10 @@ logs:
 clean:
 	@./scripts/build.sh --clean
 
+# Run the unit tests (Debug)
+tests:
+	@./scripts/test.sh
+
 # Help menu
 help:
 	@echo "MacXplorer - Developer and Release Commands:"
@@ -69,6 +73,7 @@ help:
 	@echo "  make stop            : Terminate running application instance"
 	@echo "  make build           : Compile Debug configuration only"
 	@echo "  make release         : Compile Release configuration only"
+	@echo "  make tests           : Run the unit tests"
 	@echo "  make package         : Build Release and package distribution archive (dist/)"
 	@echo "  make release-patch   : DEFAULT release — SemVer patch (e.g. 1.0.0 -> 1.0.1)"
 	@echo "  make release-minor   : Minor bump only when explicitly requested (e.g. 1.0.0 -> 1.1.0)"

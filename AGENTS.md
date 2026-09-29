@@ -4,7 +4,7 @@ SwiftUI macOS file manager. Project `Macxplorer.xcodeproj`, scheme `Macxplorer`.
 
 ## Build surface
 
-`make` at the repo root is how this repo compiles, launches, quits, logs, packages, installs, cleans, and releases. Run `make` or `make help` for the menu. Target names live in the Makefile; look them up there.
+`make` at the repo root is how this repo compiles, tests, launches, quits, logs, packages, installs, cleans, and releases. Run `make` or `make help` for the menu. Target names live in the Makefile; look them up there.
 
 Each `scripts/*.sh` file implements a target. Run the target. Run the script only when you need a flag no target forwards; that script's `--help` lists the flags.
 
@@ -29,13 +29,9 @@ A real release refuses a dirty worktree, then bumps `MARKETING_VERSION` and `CUR
 
 ### Tests
 
-Tests have no Makefile target. Use the same project, scheme, and DerivedData as the build script:
+Run the unit tests with `make tests`. It uses the same project, scheme, and DerivedData as the build script. It prints failures and the test count, and writes the full xcodebuild output to `.build/test.log`.
 
-```bash
-xcodebuild -project Macxplorer.xcodeproj -scheme Macxplorer -destination 'platform=macOS' -derivedDataPath .build/DerivedData test CODE_SIGNING_ALLOWED=NO
-```
-
-Done when the test action reports 0 failures.
+Done when `make tests` exits 0.
 
 ### Product path
 
