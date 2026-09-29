@@ -50,11 +50,12 @@ struct ContentView: View {
                 }
             }
             .alert(
-                editing.actionAlert?.title ?? "",
+                editing.alerts.current?.title ?? "",
                 isPresented: actionAlertIsPresented,
-                actions: { actionAlertButtons },
-                message: {
-                    Text(editing.actionAlert?.message ?? "")
+                presenting: editing.alerts.current,
+                actions: { alert in actionAlertButtons(alert) },
+                message: { alert in
+                    Text(alert.message)
                 }
             )
             .alert(
@@ -103,22 +104,22 @@ struct ContentView: View {
     }
 
     @ViewBuilder
-    private var actionAlertButtons: some View {
-        let kind = editing.actionAlert?.kind
-        switch kind {
-        case .collision(let onChoice):
+    private func actionAlertButtons(_ alert: ActionAlert) -> some View {
+        switch alert.kind {
+        case .collision:
             Button("Keep Both") {
-                onChoice(.keepBoth)
+                editing.alerts.finish(alert.id, choice: .keepBoth)
             }
             .keyboardShortcut(.defaultAction)
             Button("Stop", role: .cancel) {
-                onChoice(.stop)
+                editing.alerts.finish(alert.id, choice: .stop)
             }
             Button("Replace") {
-                onChoice(.replace)
+                editing.alerts.finish(alert.id, choice: .replace)
             }
-        default:
+        case .acknowledge:
             Button("OK", role: .cancel) {
+                editing.alerts.finish(alert.id)
                 guard editing.renameSession != nil else { return }
                 editing.renameAcceptsCommit = true
                 editing.renameRefocusID += 1
@@ -301,10 +302,12 @@ struct ContentView: View {
 
     private var actionAlertIsPresented: Binding<Bool> {
         Binding(
-            get: { editing.actionAlert != nil },
+            get: { editing.alerts.current != nil },
             set: { isPresented in
-                if !isPresented {
-                    editing.actionAlert = nil
+                guard !isPresented, let id = editing.alerts.current?.id else { return }
+                // Deferred so a button's own choice lands first; this then finds nothing to finish.
+                Task { @MainActor in
+                    editing.alerts.finish(id)
                 }
             }
         )
@@ -342,10 +345,10 @@ struct ContentView: View {
                 let message = error.localizedDescription
                 appLogger.info("Failed to open Terminal: \(message, privacy: .public)")
                 Task { @MainActor in
-                    editing.actionAlert = ActionAlert(
+                    editing.alerts.show(ActionAlert(
                         title: "Can't Open Terminal",
                         message: message
-                    )
+                    ))
                 }
             } else {
                 let path = directories.map(\.path).joined(separator: ", ")

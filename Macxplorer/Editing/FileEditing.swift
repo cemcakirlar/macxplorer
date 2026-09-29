@@ -16,7 +16,7 @@ enum FileAlertCopy {
 final class FileEditing {
     var listSelection = Set<URL>()
     var quickLookURL: URL?
-    var actionAlert: ActionAlert?
+    let alerts = AlertPresenter()
     var renameSession: RenameSession?
     var extensionPrompt: RenameExtensionPrompt?
     var renameRefocusID = 0
@@ -88,7 +88,7 @@ final class FileEditing {
         case .cancel:
             renameSession = nil
         case .rejected(let rejection):
-            actionAlert = ActionAlert(title: rejection.title, message: rejection.message)
+            alerts.show(ActionAlert(title: rejection.title, message: rejection.message))
         case .confirmExtension(let from, let to):
             extensionPrompt = RenameExtensionPrompt(from: from, to: to)
         case .commit(let name):
@@ -158,10 +158,10 @@ final class FileEditing {
                 appLogger.info("Moved \(moved.count, privacy: .public) item(s) to the Trash")
             }
             if !failures.isEmpty {
-                actionAlert = ActionAlert(
+                alerts.show(ActionAlert(
                     title: "Can't Move to Trash",
                     message: failures.joined(separator: "\n")
-                )
+                ))
             }
         }
     }
@@ -188,7 +188,7 @@ final class FileEditing {
                 )
                 appLogger.info("Created folder at \(created.path, privacy: .public)")
             } catch {
-                actionAlert = ActionAlert(title: "Can't Create Folder", message: error.localizedDescription)
+                alerts.show(ActionAlert(title: "Can't Create Folder", message: error.localizedDescription))
                 appLogger.info("Failed to create folder in \(parent.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
             }
         }
@@ -261,11 +261,11 @@ final class FileEditing {
         } catch let error as FileRenameError {
             if case .nameTaken(let name) = error {
                 let rejection = RenameRejection.nameTaken(name)
-                actionAlert = ActionAlert(title: rejection.title, message: rejection.message)
+                alerts.show(ActionAlert(title: rejection.title, message: rejection.message))
             }
             return false
         } catch {
-            actionAlert = ActionAlert(title: "Can't Rename", message: error.localizedDescription)
+            alerts.show(ActionAlert(title: "Can't Rename", message: error.localizedDescription))
             appLogger.info("Failed to rename \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
             return false
         }
@@ -297,9 +297,9 @@ final class FileEditing {
         }
         if !taken.isEmpty {
             let names = taken.map { FileAlertCopy.nameTaken($0, detail: "The item stayed in the Trash.") }
-            actionAlert = ActionAlert(title: "Name Already Taken", message: names.joined(separator: "\n"))
+            alerts.show(ActionAlert(title: "Name Already Taken", message: names.joined(separator: "\n")))
         } else if let message = other.first {
-            actionAlert = ActionAlert(title: "Can't Move to Trash", message: message)
+            alerts.show(ActionAlert(title: "Can't Move to Trash", message: message))
         }
         return remaining
     }
@@ -316,7 +316,7 @@ final class FileEditing {
             listSelection = listSelection.filter { Favorites.key(for: $0) != Favorites.key(for: url) }
             await model.refresh()
         } catch {
-            actionAlert = ActionAlert(title: "Can't Move to Trash", message: error.localizedDescription)
+            alerts.show(ActionAlert(title: "Can't Move to Trash", message: error.localizedDescription))
             appLogger.info("Failed to undo new folder at \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }
     }
@@ -397,10 +397,10 @@ final class FileEditing {
             appLogger.info("Transferred \(records.count, privacy: .public) item(s) into \(destination.path, privacy: .public)")
         }
         if !failures.isEmpty {
-            actionAlert = ActionAlert(
+            alerts.show(ActionAlert(
                 title: items.allSatisfy(\.moving) ? "Can't Move" : "Can't Copy",
                 message: failures.joined(separator: "\n")
-            )
+            ))
         }
     }
 
@@ -445,16 +445,11 @@ final class FileEditing {
         if appliesToRest {
             message += " This choice applies to the remaining items."
         }
-        let gate = TransferChoiceGate()
-        return await withCheckedContinuation { continuation in
-            actionAlert = ActionAlert(
-                title: "“\(name)” already exists in this location.",
-                message: message,
-                kind: .collision(onChoice: { choice in
-                    gate.resume(continuation, with: choice)
-                })
-            )
-        }
+        return await alerts.ask(ActionAlert(
+            title: "“\(name)” already exists in this location.",
+            message: message,
+            kind: .collision
+        ))
     }
 
     private func undoTransfer(_ items: [TransferUndoItem]) async -> [TransferUndoItem] {
@@ -472,7 +467,7 @@ final class FileEditing {
         }
         await model.refresh()
         if !messages.isEmpty {
-            actionAlert = ActionAlert(title: "Can't Undo", message: messages.joined(separator: "\n"))
+            alerts.show(ActionAlert(title: "Can't Undo", message: messages.joined(separator: "\n")))
         }
         return remaining
     }
@@ -594,26 +589,4 @@ final class FileEditing {
 private struct PendingTransfer: Sendable {
     var url: URL
     var moving: Bool
-}
-
-struct ActionAlert: Identifiable {
-    enum Kind {
-        case acknowledge
-        case collision(onChoice: (TransferChoice) -> Void)
-    }
-
-    let id = UUID()
-    var title: String
-    var message: String
-    var kind: Kind = .acknowledge
-}
-
-private final class TransferChoiceGate: @unchecked Sendable {
-    private var resumed = false
-
-    func resume(_ continuation: CheckedContinuation<TransferChoice, Never>, with choice: TransferChoice) {
-        guard !resumed else { return }
-        resumed = true
-        continuation.resume(returning: choice)
-    }
 }
