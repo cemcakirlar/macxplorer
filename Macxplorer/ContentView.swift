@@ -120,6 +120,14 @@ struct ContentView: View {
             Button("Replace") {
                 editing.alerts.finish(alert.id, choice: .replace)
             }
+        case .confirmTrash:
+            Button("Move to Trash") {
+                editing.alerts.finish(alert.id, confirmed: true)
+            }
+            .keyboardShortcut(.defaultAction)
+            Button("Cancel", role: .cancel) {
+                editing.alerts.finish(alert.id, confirmed: false)
+            }
         case .acknowledge:
             Button("OK", role: .cancel) {
                 editing.alerts.finish(alert.id)

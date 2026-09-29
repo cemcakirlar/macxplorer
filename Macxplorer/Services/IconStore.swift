@@ -7,17 +7,24 @@ import UniformTypeIdentifiers
 final class IconStore {
     static let shared = IconStore()
 
-    @ObservationIgnored
-    private var cache: [String: NSImage] = [:]
+    private let cache: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 5000
+        return cache
+    }()
+    @ObservationIgnored private var missing: [String: URL] = [:]
+    @ObservationIgnored private var refill: Task<Void, Never>?
     private(set) var revision = 0
 
     private init() {}
 
+    /// A row whose icon was evicted asks for it again, so an evicted icon never stays a placeholder.
     func image(for url: URL, isDirectory: Bool) -> NSImage {
         _ = revision
-        if let cached = cache[url.path] {
+        if let cached = cache.object(forKey: url.path as NSString) {
             return cached
         }
+        scheduleRefill(url)
         return isDirectory ? Self.folderPlaceholder : Self.documentPlaceholder
     }
 
@@ -25,9 +32,9 @@ final class IconStore {
         var sinceYield = 0
         for url in urls {
             if Task.isCancelled { return }
-            let key = url.path
-            if cache[key] == nil {
-                cache[key] = makeIcon(for: url)
+            let key = url.path as NSString
+            if cache.object(forKey: key) == nil {
+                cache.setObject(makeIcon(for: url), forKey: key)
             }
             sinceYield += 1
             if sinceYield == 24 {
@@ -38,6 +45,18 @@ final class IconStore {
         }
         if sinceYield > 0 {
             revision += 1
+        }
+    }
+
+    private func scheduleRefill(_ url: URL) {
+        missing[url.path] = url
+        guard refill == nil else { return }
+        refill = Task {
+            await Task.yield()
+            let urls = Array(missing.values)
+            missing = [:]
+            refill = nil
+            await prefetch(urls)
         }
     }
 

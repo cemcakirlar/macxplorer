@@ -92,7 +92,10 @@ private final class QuickLookHost: NSView {
     init(url: URL, autoplay: Bool) {
         preview = QLPreviewView(frame: .zero, style: .normal)
         super.init(frame: .zero)
-        guard let preview else { return }
+        guard let preview else {
+            appLogger.error("Quick Look preview view could not be created")
+            return
+        }
         preview.translatesAutoresizingMaskIntoConstraints = false
         addSubview(preview)
         NSLayoutConstraint.activate([

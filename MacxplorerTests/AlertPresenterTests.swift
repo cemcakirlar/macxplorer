@@ -65,6 +65,28 @@ final class AlertPresenterTests: XCTestCase {
         XCTAssertEqual(alerts.current?.title, "b")
     }
 
+    @MainActor
+    func testConfirmIsTrueOnlyWhenConfirmed() async throws {
+        let alerts = AlertPresenter()
+        let accepted = Task { await alerts.confirm(ActionAlert(title: "a", message: "", kind: .confirmTrash)) }
+        await settle()
+        alerts.finish(try XCTUnwrap(alerts.current?.id), confirmed: true)
+        let acceptedAnswer = await accepted.value
+        XCTAssertTrue(acceptedAnswer)
+        await settle()
+
+        let dismissed = Task { await alerts.confirm(ActionAlert(title: "b", message: "", kind: .confirmTrash)) }
+        await settle()
+        alerts.finish(try XCTUnwrap(alerts.current?.id))
+        let dismissedAnswer = await dismissed.value
+        XCTAssertFalse(dismissedAnswer)
+    }
+
+    func testTrashConfirmationTitleNamesOneItemAndCountsMany() {
+        XCTAssertEqual(FileAlertCopy.trashConfirmationTitle(["Ev"]), "Move “Ev” to the Trash?")
+        XCTAssertEqual(FileAlertCopy.trashConfirmationTitle(["a", "b", "c"]), "Move 3 items to the Trash?")
+    }
+
     private func collision(_ title: String) -> ActionAlert {
         ActionAlert(title: title, message: "", kind: .collision)
     }

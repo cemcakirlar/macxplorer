@@ -5,6 +5,7 @@ struct ActionAlert: Identifiable {
     enum Kind {
         case acknowledge
         case collision
+        case confirmTrash
     }
 
     let id = UUID()
@@ -35,6 +36,15 @@ final class AlertPresenter {
         await withCheckedContinuation { continuation in
             enqueue(Entry(alert: alert, resume: { continuation.resume(returning: $0) }))
         }
+    }
+
+    /// `true` only when the alert is answered with `finish(_:confirmed: true)`.
+    func confirm(_ alert: ActionAlert) async -> Bool {
+        await ask(alert) == .replace
+    }
+
+    func finish(_ id: ActionAlert.ID, confirmed: Bool) {
+        finish(id, choice: confirmed ? .replace : .stop)
     }
 
     /// Dismissal without a button counts as Stop. An `id` that is not on screen is ignored.

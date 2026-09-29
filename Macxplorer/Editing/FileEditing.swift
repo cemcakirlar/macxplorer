@@ -9,6 +9,13 @@ enum FileAlertCopy {
         }
         return "The name “\(name)” is already taken."
     }
+
+    static func trashConfirmationTitle(_ names: [String]) -> String {
+        if names.count == 1, let name = names.first {
+            return "Move “\(name)” to the Trash?"
+        }
+        return "Move \(names.count) items to the Trash?"
+    }
 }
 
 @MainActor
@@ -52,6 +59,10 @@ final class FileEditing {
 
     func beginRename(_ url: URL) {
         guard renameSession == nil, let model else { return }
+        guard !ProtectedFolders.contains(url) else {
+            NSSound.beep()
+            return
+        }
         let isFolder: Bool
         if let entry = model.entries.first(where: { $0.url.path == url.path }) {
             isFolder = entry.opensAsFolder
@@ -125,11 +136,23 @@ final class FileEditing {
     }
 
     func moveToTrash(_ urls: [URL]) {
-        let targets = TrashTargets.roots(among: urls)
-        guard !targets.isEmpty, let model else { return }
+        let roots = TrashTargets.roots(among: urls)
+        let targets = roots.filter { !ProtectedFolders.contains($0) }
+        let refused = roots.filter { ProtectedFolders.contains($0) }.map {
+            "“\(ProtectedFolders.displayName($0))” is required by macOS and stayed in place."
+        }
+        guard !roots.isEmpty, let model else { return }
         Task {
+            if !targets.isEmpty {
+                let confirmed = await alerts.confirm(ActionAlert(
+                    title: FileAlertCopy.trashConfirmationTitle(targets.map(ProtectedFolders.displayName)),
+                    message: "You can put it back from the Trash, or undo with Command-Z.",
+                    kind: .confirmTrash
+                ))
+                guard confirmed else { return }
+            }
             var moved: [TrashedItem] = []
-            var failures: [String] = []
+            var failures = refused
             for url in targets {
                 do {
                     let trashedURL = try await Task.detached {
@@ -337,6 +360,10 @@ final class FileEditing {
                 failures.append("“\(name)” can’t be found.")
                 continue
             }
+            if moving, ProtectedFolders.contains(source) {
+                failures.append("“\(ProtectedFolders.displayName(source))” is required by macOS and can’t be moved.")
+                continue
+            }
             if TransferNames.destinationIsInside(source, destinationDirectory: destination) {
                 failures.append("“\(name)” can’t be copied into itself.")
                 continue
@@ -539,9 +566,12 @@ final class FileEditing {
         }
     }
 
+    /// A sidebar folder is usually not in the open listing, so its siblings come from disk.
     private func siblingNames(for url: URL, model: BrowserModel) -> [String] {
-        guard model.entries.contains(where: { $0.url.path == url.path }) else { return [] }
-        return model.entries.map(\.url.lastPathComponent)
+        if model.entries.contains(where: { $0.url.path == url.path }) {
+            return model.entries.map(\.url.lastPathComponent)
+        }
+        return siblingNames(in: url.deletingLastPathComponent())
     }
 
     private func siblingNames(in folder: URL) -> [String] {

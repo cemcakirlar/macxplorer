@@ -165,8 +165,9 @@ struct FileDropDelegate: DropDelegate {
     }
 
     func performDrop(info: DropInfo) -> Bool {
+        let dragCount = NSPasteboard(name: .drag).changeCount
         onFinish?()
-        guard DropClaim.shared.claim() else { return true }
+        guard DropClaim.shared.claim(dragCount: dragCount) else { return true }
         let optionPressed = NSEvent.modifierFlags.contains(.option)
         switch target {
         case .file, .missing:
@@ -202,19 +203,20 @@ final class ProviderBox: @unchecked Sendable {
     }
 }
 
+/// Nested drop targets all receive the same drop. Only the first one per drag writes anything.
+/// A drag is identified by the drag pasteboard's change count, which every new drag bumps.
 final class DropClaim: @unchecked Sendable {
     static let shared = DropClaim()
     private let lock = NSLock()
-    private var claimedAt = Date.distantPast
+    private var claimedCount: Int?
 
-    func claim() -> Bool {
+    func claim(dragCount: Int) -> Bool {
         lock.lock()
         defer { lock.unlock() }
-        let now = Date()
-        if now.timeIntervalSince(claimedAt) < 0.4 {
+        if claimedCount == dragCount {
             return false
         }
-        claimedAt = now
+        claimedCount = dragCount
         return true
     }
 }
