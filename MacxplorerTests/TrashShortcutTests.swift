@@ -17,9 +17,10 @@ final class TrashShortcutTests: XCTestCase {
     }
 
     func testDeleteKeysReportTheFunctionFlag() {
-        XCTAssertTrue(TrashShortcut.matches([.command, .function]))
-        XCTAssertFalse(TrashShortcut.matches(.function))
-        XCTAssertFalse(TrashShortcut.matches([.function, .shift]))
+        XCTAssertEqual(TrashShortcut.functionKey.rawValue, 64)
+        XCTAssertTrue(TrashShortcut.matches(EventModifiers(rawValue: 80)), "Command-Delete as logged")
+        XCTAssertFalse(TrashShortcut.matches(EventModifiers(rawValue: 64)), "plain Delete as logged")
+        XCTAssertFalse(TrashShortcut.matches([TrashShortcut.functionKey, .shift]))
     }
 
     func testOtherModifiersDoNotTrash() {

@@ -282,8 +282,12 @@ final class RenameClickView: NSView, NSDraggingSource {
 }
 
 enum TrashShortcut {
-    /// Delete and Forward Delete arrive with `.function` set, so it is ignored with Caps Lock.
+    /// Delete and Forward Delete arrive with this bit set. SwiftUI deprecates `.function` for apps,
+    /// but key events still carry it.
+    static let functionKey = EventModifiers(rawValue: 1 << 6)
+
+    /// The Function bit is ignored along with Caps Lock and the numeric pad.
     static func matches(_ modifiers: EventModifiers) -> Bool {
-        modifiers.subtracting([.capsLock, .function, .numericPad]) == .command
+        modifiers.subtracting([.capsLock, functionKey, .numericPad]) == .command
     }
 }
