@@ -45,7 +45,7 @@ These were checked and found wrong, or not worth changing:
 
 Fixed then and still in place: Terminal opens through `NSWorkspace`, not AppleScript. There is one click catcher per row. Icons prefetch off the first render. Directory reads cancel. Path identity has tests.
 
-Still open is the four-click manual pass, about 2 minutes:
+The four-click manual pass passed on 29 Sep 2026:
 
 1. Expand Home with its disclosure triangle. Subfolders appear, and the UI stays responsive.
 2. Double-click a folder in the Name column. The list and the sidebar both show that folder.
