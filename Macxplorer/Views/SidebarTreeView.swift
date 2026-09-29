@@ -197,8 +197,8 @@ private struct FavoriteRow: View {
                     onSlowClick: { rename.begin(url) },
                     onDoubleClick: nil,
                     onPrimaryClick: { _ in onSelect() },
-                    fileDragRow: isAvailable ? url : nil,
-                    fileDragSelection: [url]
+                    fileDragRow: nil,
+                    fileDragSelection: []
                 )
             }
         }

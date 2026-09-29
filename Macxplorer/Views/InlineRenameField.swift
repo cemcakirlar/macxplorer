@@ -123,6 +123,7 @@ final class RenameClickView: NSView, NSDraggingSource {
     private var timer: Timer?
     private var dragStart: NSPoint?
     private var dragged = false
+    private var finishedListClick = false
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
@@ -144,16 +145,12 @@ final class RenameClickView: NSView, NSDraggingSource {
             }
             return
         }
+        if fileDragRow == nil {
+            handClickToList(event)
+            return
+        }
         if event.clickCount == 1, isSelected {
-            cancelPendingClick()
-            let delay = NSEvent.doubleClickInterval
-            timer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
-                Task { @MainActor in
-                    guard let self else { return }
-                    self.timer = nil
-                    self.onSlowClick?()
-                }
-            }
+            scheduleSlowClick()
         }
     }
 
@@ -175,10 +172,58 @@ final class RenameClickView: NSView, NSDraggingSource {
 
     override func mouseUp(with event: NSEvent) {
         dragStart = nil
-        if !dragged, event.clickCount < 2 {
+        if !dragged, event.clickCount < 2, !finishedListClick {
             deliverClick(event.modifierFlags)
         }
+        finishedListClick = false
         dragged = false
+    }
+
+    /// A favorite row has no file drag. The list underneath reorders it with `onMove`.
+    private func handClickToList(_ event: NSEvent) {
+        let wasSelected = isSelected
+        let start = event.locationInWindow
+        guard let table = enclosingTable() else {
+            deliverClick(event.modifierFlags)
+            if wasSelected { scheduleSlowClick() }
+            finishedListClick = true
+            return
+        }
+        let wasHidden = isHidden
+        isHidden = true
+        table.mouseDown(with: event)
+        isHidden = wasHidden
+        finishedListClick = true
+        guard !pointerMoved(from: start), event.clickCount < 2 else { return }
+        deliverClick(event.modifierFlags)
+        if wasSelected { scheduleSlowClick() }
+    }
+
+    private func enclosingTable() -> NSTableView? {
+        var view = superview
+        while let current = view {
+            if let table = current as? NSTableView { return table }
+            view = current.superview
+        }
+        return nil
+    }
+
+    private func pointerMoved(from start: NSPoint) -> Bool {
+        guard let window else { return false }
+        let end = window.convertPoint(fromScreen: NSEvent.mouseLocation)
+        return hypot(end.x - start.x, end.y - start.y) >= 4
+    }
+
+    private func scheduleSlowClick() {
+        cancelPendingClick()
+        let delay = NSEvent.doubleClickInterval
+        timer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.timer = nil
+                self.onSlowClick?()
+            }
+        }
     }
 
     private func deliverClick(_ flags: NSEvent.ModifierFlags) {
