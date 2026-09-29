@@ -4,7 +4,7 @@ enum NewFolder {
     static func create(in parent: URL) throws -> URL {
         let coordinator = NSFileCoordinator()
         var coordinationError: NSError?
-        let outcome = Outcome()
+        let outcome = CoordinatedOutcome<URL>()
         coordinator.coordinate(writingItemAt: parent, options: .forMerging, error: &coordinationError) { writingURL in
             outcome.result = Result { try createCoordinated(in: writingURL) }
         }
@@ -51,9 +51,4 @@ enum NewFolder {
 
     private static func isExistingItem(_ error: Error) -> Bool {
         (error as? CocoaError)?.code == .fileWriteFileExists
-    }
-
-    private final class Outcome: @unchecked Sendable {
-        var result: Result<URL, Error>?
-    }
-}
+    }}

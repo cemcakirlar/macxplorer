@@ -6,7 +6,7 @@ This doc gives no line or test counts, because they go stale. Run `make tests` f
 
 ## Status
 
-Every confirmed finding is fixed except F10, which is a code move planned as the last step. Each fix has a unit test where the logic can be tested without the UI, and each was also checked by hand in the running app.
+Every confirmed finding is fixed. Each fix has a unit test where the logic can be tested without the UI, and each was also checked by hand in the running app.
 
 | ID | Severity | Finding | Status | Commit |
 | --- | --- | --- | --- | --- |
@@ -22,7 +22,7 @@ Every confirmed finding is fixed except F10, which is a code move planned as the
 | F7 | Low | This doc reported stale counts. | Fixed by this rewrite. | This commit |
 | F9 | Medium | No tests covered the stateful code. | Fixed for the new logic: the alert queue, selection hold, Trash shortcut, drop claim, and protected folders. | Phases 1–3 |
 | F8 | Medium | No CI. | Dropped by decision. Tests run locally with `make tests`. | `25b32e7` |
-| F10 | Structure | `FileEditing` has five jobs, and the undo relays live in a Views file. | Open. Planned as a move-only split into rename, trash, and transfer coordinators. | Not started |
+| F10 | Structure | `FileEditing` had five jobs, and the undo relays lived in a Views file. | Fixed. It's split into rename, trash, and transfer coordinators, with `UndoRelays.swift` and one shared `CoordinatedOutcome`. Behavior is unchanged. | Phase 5 |
 
 ## Found while testing by hand
 

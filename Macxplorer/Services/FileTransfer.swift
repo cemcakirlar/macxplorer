@@ -73,7 +73,7 @@ enum FileTransfer {
         let sameVolume = operations.sameVolume(source, parent)
         let coordinator = NSFileCoordinator()
         var coordinationError: NSError?
-        let outcome = Outcome()
+        let outcome = CoordinatedOutcome<TransferWrite>()
         if moving && sameVolume {
             coordinator.coordinate(
                 writingItemAt: source,
@@ -199,9 +199,4 @@ enum FileTransfer {
             return false
         }
         return left.isEqual(right)
-    }
-
-    private final class Outcome: @unchecked Sendable {
-        var result: Result<TransferWrite, Error>?
-    }
-}
+    }}

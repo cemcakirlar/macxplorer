@@ -20,7 +20,7 @@ enum FileRename {
     static func apply(at url: URL, to newName: String, moves: Move) throws -> URL {
         let coordinator = NSFileCoordinator()
         var coordinationError: NSError?
-        let outcome = Outcome()
+        let outcome = CoordinatedOutcome<URL>()
         coordinator.coordinate(writingItemAt: url, options: .forMoving, error: &coordinationError) { writingURL in
             outcome.result = Result {
                 try renameCoordinated(writingURL, to: newName, moves: moves)
@@ -102,9 +102,4 @@ enum FileRename {
     private static func isExistingItem(_ error: Error) -> Bool {
         let cocoa = error as? CocoaError
         return cocoa?.code == .fileWriteFileExists || cocoa?.code == .fileWriteInvalidFileName
-    }
-
-    private final class Outcome: @unchecked Sendable {
-        var result: Result<URL, Error>?
-    }
-}
+    }}

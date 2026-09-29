@@ -63,7 +63,7 @@ enum FileTrash {
     ) throws -> URL {
         let coordinator = NSFileCoordinator()
         var coordinationError: NSError?
-        let outcome = Outcome()
+        let outcome = CoordinatedOutcome<URL>()
         coordinator.coordinate(writingItemAt: url, options: options, error: &coordinationError) { writingURL in
             outcome.result = Result { try body(writingURL) }
         }
@@ -78,9 +78,4 @@ enum FileTrash {
 
     private static func isExistingItem(_ error: Error) -> Bool {
         (error as? CocoaError)?.code == .fileWriteFileExists
-    }
-
-    private final class Outcome: @unchecked Sendable {
-        var result: Result<URL, Error>?
-    }
-}
+    }}
