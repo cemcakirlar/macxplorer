@@ -55,6 +55,8 @@ fi
 echo -e "${BLUE}${BOLD}🔨 Building MacXplorer... [Config: $CONFIG]${NC}"
 START_TIME=$(date +%s)
 
+# grep exits 1 when it filters every line, so only xcodebuild's status decides the result.
+set +e
 xcodebuild \
     -project Macxplorer.xcodeproj \
     -scheme Macxplorer \
@@ -63,10 +65,17 @@ xcodebuild \
     -derivedDataPath "$DERIVED_DATA_DIR" \
     build \
     CODE_SIGNING_ALLOWED=NO \
-    -quiet 2>&1 | grep -v -E "IDEDownloadableMetalToolchainCoordinator|IDESimulatorRuntimeVersionCoordinator|Operation not permitted|Supported platforms for the buildables|matching destinations" || true
+    -quiet 2>&1 | grep -v -E "IDEDownloadableMetalToolchainCoordinator|IDESimulatorRuntimeVersionCoordinator|Operation not permitted|Supported platforms for the buildables|matching destinations"
+BUILD_STATUS=${PIPESTATUS[0]}
+set -e
 
 END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))
+
+if [ "$BUILD_STATUS" -ne 0 ]; then
+    echo -e "${RED}❌ Build failed (xcodebuild exit $BUILD_STATUS, ${DURATION}s)${NC}"
+    exit "$BUILD_STATUS"
+fi
 
 APP_PATH="$DERIVED_DATA_DIR/Build/Products/$CONFIG/Macxplorer.app"
 
