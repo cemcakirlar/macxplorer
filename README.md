@@ -29,11 +29,13 @@ Sandbox is already off (`ENABLE_APP_SANDBOX = NO` and `Macxplorer/Macxplorer.ent
 
 1. Expand **Home** with the chevron. Only that folder’s subfolders load.
 2. Click a folder. The list shows Name, Date Modified, Size, and Kind. Click a column header to sort. Name sort keeps folders first.
-3. Double-click a folder. The list opens it and the sidebar expands to the same path.
-4. Double-click a file. It opens in the default app.
-5. Use the path bar to jump upward. **Back** (Command-[), **Forward** (Command-]), and **Up** (Command-Up Arrow) sit at the leading edge of the toolbar.
-6. **Hidden** (Command-Shift-.), **Refresh** (Command-R), **Preview** (Command-Shift-P), **Finder**, and **Terminal** are in the toolbar. Preview uses Quick Look and shows kind, size, and modified date for the selected item.
-7. Right-click a file or folder: **Reveal in Finder**, **Open in Terminal**, **Copy Name**, **Copy Path**, **Copy Path with ~**, and **Quick Look**. **Copy Path** is also Option-Command-C. If nothing in the list is selected, the shortcut copies the open folder. A file’s terminal is its parent folder. **Quick Look** opens the preview for that one item.
+3. Switch browse view with the toolbar segmented control, or **Command-1** (Details), **Command-2** (Icons), **Command-3** (Columns). Details is the default. Icons is a large-icon grid. Columns is a Miller-column browser from the sidebar root through the open folder.
+4. Filter the open folder with the toolbar **Search** field (**Command-F** focuses it). Matching is by name only and clears when you open another folder. In Columns, search filters the last column. Typing while the list is focused jumps selection to the first name with that prefix (type-ahead; does not change the search field).
+5. Double-click a folder. The list opens it and the sidebar expands to the same path.
+6. Double-click a file. It opens in the default app.
+7. Use the path bar to jump upward. **Back** (Command-[), **Forward** (Command-]), and **Up** (Command-Up Arrow) sit at the leading edge of the toolbar.
+8. **Hidden** (Command-Shift-.), **Refresh** (Command-R), **Preview** (Command-Shift-P), **Finder**, and **Terminal** are in the toolbar. Preview uses Quick Look and shows kind, size, and modified date for the selected item.
+9. Right-click a file or folder: **Reveal in Finder**, **Open in Terminal**, **Copy Name**, **Copy Path**, **Copy Path with ~**, and **Quick Look**. **Copy Path** is also Option-Command-C. If nothing in the list is selected, the shortcut copies the open folder. A file’s terminal is its parent folder. **Quick Look** opens the preview for that one item.
 
 Directory size stays “—”. Folder sizes are not calculated.
 
@@ -44,6 +46,8 @@ Open **Settings** (Command-,).
 - **General:** show hidden files in the list, reopen the last folder, and choose the terminal app (Terminal, iTerm, Ghostty, Warp, or another app).
 - **Preview:** play media automatically.
 - **Sidebar:** show hidden folders, and rename the Home, Root, and Volumes labels.
+
+The browse view (Details / Icons / Columns) is remembered between launches.
 
 ## Open a downloaded build
 

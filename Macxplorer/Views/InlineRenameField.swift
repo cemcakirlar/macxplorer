@@ -132,6 +132,8 @@ final class RenameClickView: NSView, NSDraggingSource {
     private var dragged = false
     private var finishedListClick = false
 
+    override var acceptsFirstResponder: Bool { true }
+
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
@@ -139,7 +141,7 @@ final class RenameClickView: NSView, NSDraggingSource {
     }
 
     override func mouseDown(with event: NSEvent) {
-        focusEnclosingTable()
+        focusForKeyboard()
         dragged = false
         dragStart = convert(event.locationInWindow, from: nil)
         if event.clickCount >= 2 {
@@ -207,10 +209,18 @@ final class RenameClickView: NSView, NSDraggingSource {
         if wasSelected { scheduleSlowClick() }
     }
 
-    /// This view takes the click, so the table under it would otherwise never get keyboard focus.
-    private func focusEnclosingTable() {
-        guard let window, let table = enclosingTable(), window.firstResponder !== table else { return }
-        window.makeFirstResponder(table)
+    /// This view takes the click, so the list under it would otherwise never get keyboard focus.
+    private func focusForKeyboard() {
+        guard let window else { return }
+        if let table = enclosingTable() {
+            if window.firstResponder !== table {
+                window.makeFirstResponder(table)
+            }
+            return
+        }
+        if window.firstResponder !== self {
+            window.makeFirstResponder(self)
+        }
     }
 
     private func enclosingTable() -> NSTableView? {

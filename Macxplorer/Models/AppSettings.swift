@@ -48,6 +48,7 @@ final class AppSettings {
         static let showPreview = "showPreview"
         static let previewAutoplay = "previewAutoplay"
         static let favoritePaths = "favoritePaths"
+        static let browseView = "browseView"
     }
 
     private let defaults: UserDefaults
@@ -102,6 +103,10 @@ final class AppSettings {
         didSet { defaults.set(favoritePaths, forKey: Key.favoritePaths) }
     }
 
+    var browseView: BrowseViewMode {
+        didSet { defaults.set(browseView.rawValue, forKey: Key.browseView) }
+    }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         showHidden = defaults.bool(forKey: Key.showHidden)
@@ -124,6 +129,7 @@ final class AppSettings {
         showPreview = defaults.bool(forKey: Key.showPreview)
         previewAutoplay = defaults.bool(forKey: Key.previewAutoplay)
         favoritePaths = defaults.stringArray(forKey: Key.favoritePaths) ?? []
+        browseView = BrowseViewMode.stored(defaults.string(forKey: Key.browseView))
     }
 
     func rememberFolder(_ url: URL) {
@@ -140,5 +146,6 @@ final class AppSettings {
         terminalAppPath = TerminalApps.defaultPath
         showPreview = false
         previewAutoplay = false
+        browseView = .details
     }
 }

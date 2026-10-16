@@ -5,6 +5,9 @@ struct ContentView: View {
     @Bindable var settings: AppSettings
     @State private var model = BrowserModel()
     @State private var editing = FileEditing()
+    @State private var nameFilter = ""
+    @State private var typeAhead = TypeAheadBuffer()
+    @FocusState private var searchFieldFocused: Bool
     @Environment(\.undoManager) private var undoManager
 
     var body: some View {
@@ -22,11 +25,20 @@ struct ContentView: View {
                 editing.bind(model: model, undoManager: undoManager)
             }
             .onChange(of: model.selectedURL) { _, newURL in
+                nameFilter = ""
+                typeAhead.clear()
                 if model.consumeSelectionHold(for: newURL) {
                     return
                 }
                 editing.listSelection = []
                 editing.quickLookURL = nil
+            }
+            .onChange(of: nameFilter) { _, query in
+                typeAhead.clear()
+                let visible = Set(
+                    FileNameFilter.filtered(model.entries, query: query).map { Favorites.key(for: $0.url) }
+                )
+                editing.listSelection = editing.listSelection.filter { visible.contains(Favorites.key(for: $0)) }
             }
             .onChange(of: editing.listSelection) { _, newValue in
                 guard let quickLookURL = editing.quickLookURL else { return }
@@ -81,14 +93,8 @@ struct ContentView: View {
             SidebarTreeView(model: model, actions: itemActions, rename: renameEditing, receiveDrop: editing.receiveDrop)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 480)
         } detail: {
-            FileListView(
-                model: model,
-                rowSelection: $editing.listSelection,
-                actions: itemActions,
-                rename: renameEditing,
-                receiveDrop: editing.receiveDrop
-            )
-            .navigationTitle(detailTitle)
+            detailBrowser
+                .navigationTitle(detailTitle)
         }
         .inspector(isPresented: $settings.showPreview) {
             PreviewInspector(
@@ -191,9 +197,101 @@ struct ContentView: View {
         .frame(minWidth: 240, idealWidth: 640, maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 
+    @ViewBuilder
+    private var detailBrowser: some View {
+        switch settings.browseView {
+        case .details:
+            FileListView(
+                model: model,
+                rowSelection: $editing.listSelection,
+                actions: itemActions,
+                rename: renameEditing,
+                receiveDrop: editing.receiveDrop,
+                nameFilter: nameFilter,
+                onClearFilter: clearNameFilter,
+                typeAhead: $typeAhead,
+                searchFieldFocused: searchFieldFocused
+            )
+        case .icons:
+            IconGridView(
+                model: model,
+                rowSelection: $editing.listSelection,
+                actions: itemActions,
+                rename: renameEditing,
+                receiveDrop: editing.receiveDrop,
+                nameFilter: nameFilter,
+                onClearFilter: clearNameFilter,
+                typeAhead: $typeAhead,
+                searchFieldFocused: searchFieldFocused
+            )
+        case .columns:
+            ColumnBrowserView(
+                model: model,
+                rowSelection: $editing.listSelection,
+                actions: itemActions,
+                rename: renameEditing,
+                receiveDrop: editing.receiveDrop,
+                nameFilter: nameFilter,
+                onClearFilter: clearNameFilter,
+                typeAhead: $typeAhead,
+                searchFieldFocused: searchFieldFocused
+            )
+        }
+    }
+
     @ToolbarContentBuilder
     private var actionToolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
+            HStack(spacing: 4) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("Search", text: $nameFilter)
+                    .textFieldStyle(.plain)
+                    .focused($searchFieldFocused)
+                    .frame(width: 140)
+                    .onSubmit { searchFieldFocused = false }
+                    .onExitCommand {
+                        if !nameFilter.isEmpty {
+                            clearNameFilter()
+                        } else {
+                            searchFieldFocused = false
+                        }
+                    }
+                if !nameFilter.isEmpty {
+                    Button {
+                        clearNameFilter()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Clear search")
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .help("Filter items in the open folder")
+
+            Button("Focus Search") {
+                searchFieldFocused = true
+            }
+            .keyboardShortcut("f", modifiers: .command)
+            .opacity(0)
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+
+            Picker("View", selection: $settings.browseView) {
+                ForEach(BrowseViewMode.allCases) { mode in
+                    Image(systemName: mode.systemImage)
+                        .tag(mode)
+                        .help(mode.title)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 120)
+            .help("Details, Icons, or Columns")
+
             Toggle(isOn: $settings.showHidden) {
                 Label("Hidden", systemImage: model.showHiddenInList ? "eye" : "eye.slash")
             }
@@ -232,6 +330,11 @@ struct ContentView: View {
             .disabled(model.selectedURL == nil)
             .help("Open the current folder in Terminal")
         }
+    }
+
+    private func clearNameFilter() {
+        nameFilter = ""
+        searchFieldFocused = false
     }
 
     private var rootLabelSignature: String {

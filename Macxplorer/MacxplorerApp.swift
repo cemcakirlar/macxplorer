@@ -27,10 +27,37 @@ struct MacxplorerApp: App {
                 CopyPathCommand()
                 NewFolderCommand()
             }
+            CommandGroup(before: .sidebar) {
+                BrowseViewCommand(mode: .details)
+                BrowseViewCommand(mode: .icons)
+                BrowseViewCommand(mode: .columns)
+                Divider()
+            }
         }
 
         Settings {
             SettingsView(settings: .shared)
+        }
+    }
+}
+
+private struct BrowseViewCommand: View {
+    var mode: BrowseViewMode
+    @Bindable private var settings = AppSettings.shared
+
+    var body: some View {
+        Button(mode.title) {
+            settings.browseView = mode
+        }
+        .keyboardShortcut(shortcut, modifiers: .command)
+        .disabled(settings.browseView == mode)
+    }
+
+    private var shortcut: KeyEquivalent {
+        switch mode {
+        case .details: return "1"
+        case .icons: return "2"
+        case .columns: return "3"
         }
     }
 }

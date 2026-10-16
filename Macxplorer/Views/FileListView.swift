@@ -7,31 +7,21 @@ struct FileListView: View {
     var actions: ItemActions
     var rename: RenameEditing
     var receiveDrop: ([URL], DropTargetKind, Bool) -> Void
+    var nameFilter: String = ""
+    var onClearFilter: (() -> Void)? = nil
+    @Binding var typeAhead: TypeAheadBuffer
+    var searchFieldFocused: Bool = false
     @State private var sortOrder = [KeyPathComparator(\FileEntry.name)]
     @State private var hoveredDrop = DropHoverTracker()
 
     var body: some View {
-        Group {
-            if model.isLoadingDetail, model.entries.isEmpty, model.detailError == nil {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let detailError = model.detailError, model.entries.isEmpty {
-                ContentUnavailableView(
-                    "Can't Open Folder",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text(detailError)
-                )
-            } else if model.entries.isEmpty {
-                ContentUnavailableView(
-                    "Empty Folder",
-                    systemImage: "folder",
-                    description: Text("This folder is empty.")
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .onDrop(of: [.fileURL], delegate: FileDropDelegate(target: openFolderTarget, receive: receiveDrop))
-            } else {
-                table
-            }
+        FileBrowseChrome(
+            model: model,
+            nameFilter: nameFilter,
+            onClearFilter: onClearFilter,
+            receiveDrop: receiveDrop
+        ) {
+            table
         }
         .focusedSceneValue(\.fileCopyAction, FileCopyAction(urls: copiedURLs))
     }
@@ -41,7 +31,10 @@ struct FileListView: View {
     }
 
     private var rows: [FileEntry] {
-        FileListOrder.sorted(model.entries, by: FileSort(order: sortOrder))
+        FileNameFilter.filtered(
+            FileListOrder.sorted(model.entries, by: FileSort(order: sortOrder)),
+            query: nameFilter
+        )
     }
 
     private var table: some View {
@@ -102,12 +95,36 @@ struct FileListView: View {
             return .handled
         }
         .onKeyPress(keys: [.delete, .deleteForward], phases: .down) { press in
-            guard rename.session == nil, TrashShortcut.matches(press.modifiers) else { return .ignored }
-            guard !rowSelection.isEmpty else { return .ignored }
-            actions.moveToTrash(Array(rowSelection))
-            return .handled
+            if TrashShortcut.matches(press.modifiers) {
+                guard rename.session == nil else { return .ignored }
+                guard !rowSelection.isEmpty else { return .ignored }
+                actions.moveToTrash(Array(rowSelection))
+                return .handled
+            }
+            return handleTypeAhead(press)
+        }
+        .onKeyPress(phases: .down) { press in
+            handleTypeAhead(press)
         }
         .onDrop(of: [.fileURL], delegate: FileDropDelegate(target: openFolderTarget, receive: receiveDrop))
+    }
+
+    private func handleTypeAhead(_ press: KeyPress) -> KeyPress.Result {
+        var nextBuffer = typeAhead
+        var nextSelection = rowSelection
+        let result = FolderTypeAhead.handle(
+            press,
+            renaming: rename.session != nil,
+            searchFocused: searchFieldFocused,
+            buffer: &nextBuffer,
+            visibleRows: rows,
+            selection: &nextSelection
+        )
+        if result == .handled {
+            typeAhead = nextBuffer
+            rowSelection = nextSelection
+        }
+        return result
     }
 
     private func rowDrop<Content: View>(
@@ -126,7 +143,7 @@ struct FileListView: View {
                 if dragFromCell {
                     FileDragSource(
                         row: entry.url,
-                        selection: dragURLs(for: entry.url),
+                        selection: FileBrowseSelection.dragURLs(for: entry.url, selection: rowSelection),
                         onPrimaryClick: { flags in selectRow(entry.url, flags: flags) }
                     )
                 }
@@ -165,36 +182,10 @@ struct FileListView: View {
         return .folder(url)
     }
 
-    private func dragURLs(for url: URL) -> [URL] {
-        if rowSelection.contains(url) {
-            return rowSelection.sorted { $0.path < $1.path }
-        }
-        return [url]
-    }
-
     private func selectRow(_ url: URL, flags: NSEvent.ModifierFlags) {
-        if flags.contains(.command) {
-            if rowSelection.contains(url) {
-                rowSelection.remove(url)
-            } else {
-                rowSelection.insert(url)
-            }
-            return
-        }
-        if flags.contains(.shift) {
-            let order = rows.map(\.url)
-            let anchor = rowSelection.first ?? url
-            guard
-                let start = order.firstIndex(where: { Favorites.key(for: $0) == Favorites.key(for: anchor) }),
-                let end = order.firstIndex(where: { Favorites.key(for: $0) == Favorites.key(for: url) })
-            else {
-                rowSelection = [url]
-                return
-            }
-            rowSelection = Set(order[min(start, end)...max(start, end)])
-            return
-        }
-        rowSelection = [url]
+        var next = rowSelection
+        FileBrowseSelection.select(url, flags: flags, orderedURLs: rows.map(\.url), selection: &next)
+        rowSelection = next
     }
 
     private func nameCell(_ entry: FileEntry) -> some View {
@@ -221,10 +212,14 @@ struct FileListView: View {
                 RenameClickCatcher(
                     isSelected: rowSelection.contains(entry.url),
                     onSlowClick: { rename.begin(entry.url) },
-                    onDoubleClick: { open(entry) },
+                    onDoubleClick: {
+                        FileBrowseSelection.open(entry) { url in
+                            Task { await model.navigate(to: url) }
+                        }
+                    },
                     onPrimaryClick: { flags in selectRow(entry.url, flags: flags) },
                     fileDragRow: entry.url,
-                    fileDragSelection: dragURLs(for: entry.url)
+                    fileDragSelection: FileBrowseSelection.dragURLs(for: entry.url, selection: rowSelection)
                 )
             }
         }
@@ -254,14 +249,6 @@ struct FileListView: View {
             rename: actions.rename,
             moveToTrash: actions.moveToTrash
         )
-    }
-
-    private func open(_ entry: FileEntry) {
-        if let folder = FolderOpenTarget.url(for: entry.url, opensAsFolder: entry.opensAsFolder) {
-            Task { await model.navigate(to: folder) }
-        } else {
-            NSWorkspace.shared.open(entry.url)
-        }
     }
 }
 
