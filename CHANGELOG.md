@@ -3,6 +3,27 @@
 All notable changes to MacXplorer will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.6.0] - 2026-10-16
+
+### Features
+- feat(browse): add Icons/Columns views and in-folder name search (`6cd4012`)
+
+### Maintenance & Tooling
+- chore: record the icon and column views plan (`7df85e0`)
+
+---
+
+### macOS Installation & Gatekeeper Note
+Because this open-source build is distributed outside the Mac App Store without a paid Apple Developer ID, macOS Gatekeeper may show a warning (*"Apple could not verify..."*) on first launch.
+
+**To open the app, run this single command in Terminal:**
+```bash
+xattr -cr "/Applications/Macxplorer.app"
+```
+*Alternatively, open **System Settings ➔ Privacy & Security** and click **Open Anyway**.* 
+
+
+
 ## [v1.5.2] - 2026-09-29
 
 ### Features
